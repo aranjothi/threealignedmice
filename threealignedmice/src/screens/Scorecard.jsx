@@ -26,14 +26,9 @@ function DimBar({ dim, rate }) {
 
 export default function Scorecard({ score, onReplay, onHome, onLeaderboard }) {
   if (!score) return null
-  const { overallPassRate, dimRates, highestTier, totalInteractions } = score
-  const { rank, stars, desc } = getRank(overallPassRate)
-  const tierInfo = TIER_INFO[highestTier]
-
   const {
     overallPassRate,
     dimRates,
-    highestTier,
     totalInteractions,
     consistencyScore,
     criticalFailureCount,
@@ -41,7 +36,6 @@ export default function Scorecard({ score, onReplay, onHome, onLeaderboard }) {
   } = score
 
   const { rank, stars, desc } = getRank(overallPassRate)
-  const tierInfo = TIER_INFO[highestTier] || TIER_INFO[1]
 
   return (
     <div className="scorecard-screen">

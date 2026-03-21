@@ -49,7 +49,7 @@ export default function App() {
   return (
     <>
       {screen === 'landing'   && <Landing onPlay={() => setScreen('game')} onSettings={() => {}} onAbout={() => {}} />}
-      {screen === 'game'      && <GameSession onFinish={handleFinish} />}
+      {screen === 'game'      && <GameSession onFinish={handleFinish} onExit={handleHome} />}
       {screen === 'scorecard' && <Scorecard score={finalScore} onReplay={() => setScreen('game')} onHome={() => { setFinalScore(null); setScreen('landing') }} />}
     </>
   )
