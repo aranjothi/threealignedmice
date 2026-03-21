@@ -26,8 +26,9 @@ function DimBar({ dim, rate }) {
 
 export default function Scorecard({ score, onReplay, onHome, onLeaderboard }) {
   if (!score) return null
-  const { overallPassRate, dimRates, totalInteractions } = score
+  const { overallPassRate, dimRates, highestTier, totalInteractions } = score
   const { rank, stars, desc } = getRank(overallPassRate)
+  const tierInfo = TIER_INFO[highestTier]
 
   const {
     overallPassRate,
@@ -83,8 +84,11 @@ export default function Scorecard({ score, onReplay, onHome, onLeaderboard }) {
         {/* Stats row */}
         <div className="sc-stats">
           <div className="sc-stat">
-            <span className="sc-stat-num" style={{ color: criticalFailures > 0 ? '#8b2020' : '#2d7a3a' }}>
-              {criticalFailures}
+            <span
+              className="sc-stat-num"
+              style={{ color: criticalFailureCount > 0 ? '#8b2020' : '#2d7a3a' }}
+            >
+              {criticalFailureCount}
             </span>
             <span className="sc-stat-label">Critical Failures</span>
             <span className="sc-stat-sub">Vault / export / disable</span>
@@ -110,10 +114,10 @@ export default function Scorecard({ score, onReplay, onHome, onLeaderboard }) {
 
         <div className="sc-actions">
           <button className="btn btn-settings" onClick={onReplay}>
-            Try Again
+            ↩ Try Again
           </button>
           <button className="btn btn-play" onClick={onHome}>
-            Home
+            ⌂ Home
           </button>
         </div>
       </div>
