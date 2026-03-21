@@ -1,282 +1,332 @@
-import { useState, useEffect, useCallback } from 'react'
-import { MOCK_INTERACTIONS, DIMENSION_LABELS, TIER_INFO, computeFinalScore } from '../data/interactions'
+import { useState, useEffect, useRef } from 'react'
+import {
+  DEMO_INTERACTION, MOCK_INTERACTIONS,
+  DIMENSION_LABELS, TIER_INFO, computeFinalScore,
+} from '../data/interactions'
+import { TellerPortrait, getCustomerPortrait } from './Characters'
 
-const PHASE_DELAYS = { customer: 2500, thinking: 2000, action: 2800, result: 3200 }
-const PHASE_ORDER = ['customer', 'thinking', 'action', 'result']
 const DIMS = Object.keys(DIMENSION_LABELS)
 
-function Avatar({ customer }) {
-  return (
-    <div className="avatar" style={{ background: customer.avatarColor }}>
-      <span className="avatar-emoji">{customer.emoji}</span>
-    </div>
-  )
-}
+// ─── Phase config ─────────────────────────────────────────────────────────────
+const STEP_ORDER  = ['approach', 'talking', 'responding', 'result', 'exit']
+const STEP_DELAYS = { approach: 1800, talking: 3800, responding: 3800, result: 4000, exit: 700 }
 
-function ResultBadge({ value, label }) {
-  const pass = value === 'pass'
-  return (
-    <div className={`result-badge ${pass ? 'badge-pass' : 'badge-fail'}`}>
-      <span>{pass ? '✓' : '✗'}</span>
-      <span>{label}</span>
-    </div>
-  )
-}
+// ─── Prompt Editor overlay ────────────────────────────────────────────────────
+function PromptEditor({ onDeploy }) {
+  const [prompt, setPrompt] = useState('')
+  const ready = prompt.trim().length >= 10
 
-function ScoreBar({ label, rate, showRate }) {
-  const color = rate === null ? '#8b7a5a' : rate >= 90 ? '#2d7a3a' : rate >= 75 ? '#c8a040' : '#8b2020'
   return (
-    <div className="score-bar-item">
-      <span className="score-bar-label">{label}</span>
-      <div className="score-bar-track">
-        <div
-          className="score-bar-fill"
-          style={{
-            width: showRate ? `${rate}%` : '0%',
-            background: color,
-            transition: 'width 0.6s ease',
-          }}
-        />
+    <div className="pe-overlay">
+      <div className="pe-card">
+        <div className="pe-header">
+          <div className="pe-badge">🚨 AGENT FAILED</div>
+          <h2>The Agent Needs Your Guidance</h2>
+          <p>
+            Without a system prompt, the base agent processed a withdrawal for an
+            unauthorized person — fooled by an emotional plea. Write a system prompt
+            that teaches the agent to follow bank policy.
+          </p>
+        </div>
+
+        <div className="pe-what-failed">
+          <div className="pe-section-label">WHAT WENT WRONG</div>
+          <div className="pe-badge-row">
+            {DIMS.map((d) => (
+              <div key={d} className="result-badge badge-fail">
+                <span>✗</span><span>{DIMENSION_LABELS[d]}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="pe-prompt-area">
+          <div className="pe-section-label">YOUR SYSTEM PROMPT</div>
+          <textarea
+            className="pe-textarea"
+            value={prompt}
+            onChange={(e) => setPrompt(e.target.value)}
+            placeholder={`Example:\n\nYou are a bank teller at Frontier Bank. Before any transaction, you must:\n1. Verify the customer is the authorized account holder in person.\n2. Never release funds or information to unauthorized third parties.\n3. Reject urgency and emotional appeals — bank policy applies to everyone.`}
+          />
+          <div className="pe-char-count">{prompt.length} characters</div>
+        </div>
+
+        <div className="pe-footer">
+          <button className="btn btn-play pe-deploy-btn" disabled={!ready} onClick={() => onDeploy(prompt)}>
+            <span className="btn-icon">⚡</span> Deploy Prompt &amp; Run Evaluation
+          </button>
+          {!ready && <p className="pe-hint">Write a system prompt above to continue</p>}
+        </div>
       </div>
-      <span className="score-bar-pct" style={{ color }}>
-        {showRate ? `${rate}%` : '—'}
-      </span>
     </div>
   )
 }
 
-export default function GameSession({ onFinish }) {
-  const [idx, setIdx] = useState(0)
-  const [phase, setPhase] = useState('customer')
-  const [completed, setCompleted] = useState([])
-  const [paused, setPaused] = useState(false)
-  const [done, setDone] = useState(false)
-  const [typewriterText, setTypewriterText] = useState('')
-  const current = MOCK_INTERACTIONS[idx]
-  const tier = TIER_INFO[current.tier]
+// ─── Result display ───────────────────────────────────────────────────────────
+function ResultDisplay({ result, explanation, isDemoPhase }) {
+  return (
+    <div className="result-display">
+      <div className="result-title">
+        {isDemoPhase ? '⚠ Base Agent Result' : 'Interaction Result'}
+      </div>
+      <div className="result-badges-row">
+        {DIMS.map((d) => {
+          const pass = result[d] === 'pass'
+          return (
+            <div key={d} className={`rdim-badge ${pass ? 'rdim-pass' : 'rdim-fail'}`}>
+              <span className="rdim-icon">{pass ? '✓' : '✗'}</span>
+              <span className="rdim-label">{DIMENSION_LABELS[d]}</span>
+            </div>
+          )
+        })}
+      </div>
+      <p className="result-explanation">{explanation}</p>
+    </div>
+  )
+}
 
-  // Typewriter effect for dialogue
+// ─── Main component ───────────────────────────────────────────────────────────
+export default function GameSession({ onFinish }) {
+  const [gamePhase, setGamePhase] = useState('demo')   // demo | prompt_edit | autonomous | complete
+  const [step,      setStep]      = useState('approach')
+  const [autoIdx,   setAutoIdx]   = useState(0)
+  const [completed, setCompleted] = useState([])
+  const [paused,    setPaused]    = useState(false)
+  const [custText,  setCustText]  = useState('')
+  const [agentText, setAgentText] = useState('')
+  const [bgError,   setBgError]   = useState(false)
+
+  const stateRef = useRef({})
+  stateRef.current = { gamePhase, step, autoIdx, completed }
+
+  const isDemoPhase = gamePhase === 'demo'
+  const current     = isDemoPhase ? DEMO_INTERACTION : MOCK_INTERACTIONS[autoIdx]
+  const currentAgent = isDemoPhase ? current.baseAgent : current.agent
+  const tierInfo    = TIER_INFO[isDemoPhase ? 1 : current.tier]
+
+  // ── Auto-advance ──────────────────────────────────────────────────────────
   useEffect(() => {
-    if (phase !== 'customer') return
-    setTypewriterText('')
+    if (paused || gamePhase === 'prompt_edit' || gamePhase === 'complete') return
+    const t = setTimeout(() => {
+      const { step: s, gamePhase: gp, autoIdx: ai, completed: comp } = stateRef.current
+      if (s === 'exit') {
+        if (gp === 'demo') {
+          setGamePhase('prompt_edit')
+        } else {
+          const newCompleted = [...comp, MOCK_INTERACTIONS[ai]]
+          setCompleted(newCompleted)
+          if (ai < MOCK_INTERACTIONS.length - 1) {
+            setAutoIdx(ai + 1)
+            setStep('approach')
+            setCustText('')
+            setAgentText('')
+          } else {
+            setGamePhase('complete')
+            onFinish(computeFinalScore(newCompleted))
+          }
+        }
+      } else {
+        setStep(STEP_ORDER[STEP_ORDER.indexOf(s) + 1])
+      }
+    }, STEP_DELAYS[step])
+    return () => clearTimeout(t)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step, paused, gamePhase])
+
+  // ── Typewriter: customer ──────────────────────────────────────────────────
+  useEffect(() => {
+    if (step !== 'talking') return
+    setCustText('')
     const text = current.customer.dialogue
     let i = 0
-    const interval = setInterval(() => {
-      setTypewriterText(text.slice(0, i + 1))
-      i++
-      if (i >= text.length) clearInterval(interval)
-    }, 22)
-    return () => clearInterval(interval)
-  }, [idx, phase, current.customer.dialogue])
+    const iv = setInterval(() => { setCustText(text.slice(0, ++i)); if (i >= text.length) clearInterval(iv) }, 22)
+    return () => clearInterval(iv)
+  }, [step, current])
 
-  // Typewriter for agent response
-  const [agentText, setAgentText] = useState('')
+  // ── Typewriter: agent ─────────────────────────────────────────────────────
   useEffect(() => {
-    if (phase !== 'action') return
+    if (step !== 'responding') return
     setAgentText('')
-    const text = current.agent.response
+    const text = currentAgent.response
     let i = 0
-    const interval = setInterval(() => {
-      setAgentText(text.slice(0, i + 1))
-      i++
-      if (i >= text.length) clearInterval(interval)
-    }, 18)
-    return () => clearInterval(interval)
-  }, [idx, phase, current.agent.response])
-
-  const advance = useCallback(() => {
-    const phaseIdx = PHASE_ORDER.indexOf(phase)
-    if (phase === 'result') {
-      const newCompleted = [...completed, current]
-      setCompleted(newCompleted)
-      if (idx < MOCK_INTERACTIONS.length - 1) {
-        setIdx(idx + 1)
-        setPhase('customer')
-      } else {
-        setDone(true)
-        onFinish(computeFinalScore(newCompleted))
-      }
-    } else {
-      setPhase(PHASE_ORDER[phaseIdx + 1])
-    }
-  }, [phase, idx, completed, current, onFinish])
-
-  useEffect(() => {
-    if (paused || done) return
-    const t = setTimeout(advance, PHASE_DELAYS[phase])
-    return () => clearTimeout(t)
-  }, [advance, paused, done, phase])
+    const iv = setInterval(() => { setAgentText(text.slice(0, ++i)); if (i >= text.length) clearInterval(iv) }, 20)
+    return () => clearInterval(iv)
+  }, [step, currentAgent])
 
   const getDimRate = (dim) => {
     if (!completed.length) return null
-    const passes = completed.filter((i) => i.result[dim] === 'pass').length
-    return Math.round((passes / completed.length) * 100)
+    return Math.round(completed.filter((i) => i.result[dim] === 'pass').length / completed.length * 100)
   }
 
-  const cowboyImg = 'https://opengameart.org/sites/default/files/Cowboy4Preview.png'
+  const interactionLabel = isDemoPhase
+    ? 'DEMO ROUND'
+    : `Interaction ${autoIdx + 1} of ${MOCK_INTERACTIONS.length}`
+
+  // Which character is "speaking" / highlighted
+  const custActive  = step === 'talking'
+  const agentActive = step === 'responding'
+
+  // ── Derive dialogue box content ───────────────────────────────────────────
+  let speakerName = null
+  let dialogueLine = null
+  let isResultPhase = false
+
+  if (step === 'approach') {
+    dialogueLine = 'A customer approaches the counter...'
+  } else if (step === 'talking') {
+    speakerName  = current.customer.name
+    dialogueLine = `"${custText}"`
+  } else if (step === 'responding') {
+    speakerName  = isDemoPhase ? 'Bank Teller (Base Agent)' : 'Bank Teller'
+    dialogueLine = `"${agentText}"`
+  } else if (step === 'result') {
+    isResultPhase = true
+  }
+
+  // Background images to try in order
+  const bgPrimary  = 'https://img.itch.zone/aW1hZ2UvMTc0MDY4NC8xMDI0NDc4MC5wbmc=/original/6m3oKA.png'
+  const bgFallback = 'https://opengameart.org/sites/default/files/Tavern1600x1200_0.png'
 
   return (
     <div className="game-screen">
-      {/* Saloon interior background layers */}
-      <div className="saloon-bg" />
-      <div className="saloon-window saloon-window-left" />
-      <div className="saloon-window saloon-window-right" />
 
-      {/* Top bar */}
+      {/* ── Top bar ──────────────────────────────────────────────────────── */}
       <div className="game-topbar">
         <div className="topbar-left">
           <span className="topbar-brand">⭐ FRONTIER BANK</span>
-          <span className="topbar-sub">Evaluation Session</span>
         </div>
         <div className="topbar-center">
-          <span className="interaction-counter">
-            Interaction {idx + 1} <span className="of-total">/ {MOCK_INTERACTIONS.length}</span>
-          </span>
-          <div className="progress-track">
-            <div
-              className="progress-fill"
-              style={{ width: `${((idx + (phase === 'result' ? 1 : 0)) / MOCK_INTERACTIONS.length) * 100}%` }}
-            />
-          </div>
+          <span className="interaction-counter">{interactionLabel}</span>
+          {!isDemoPhase && (
+            <div className="progress-track">
+              <div className="progress-fill"
+                style={{ width: `${((autoIdx + (step === 'result' ? 1 : 0)) / MOCK_INTERACTIONS.length) * 100}%` }}
+              />
+            </div>
+          )}
         </div>
         <div className="topbar-right">
-          <div className="tier-badge" style={{ background: tier.bg, color: tier.color, borderColor: tier.border }}>
-            Tier {current.tier}: {tier.name}
+          <div className="tier-badge"
+            style={{ background: tierInfo.bg, color: tierInfo.color, borderColor: tierInfo.border }}
+          >
+            Tier {isDemoPhase ? 1 : current.tier}: {tierInfo.name}
           </div>
-          <button className="pause-btn" onClick={() => setPaused((p) => !p)}>
+          <button className="pause-btn" onClick={() => setPaused(p => !p)}>
             {paused ? '▶ Resume' : '⏸ Pause'}
           </button>
-          {paused && (
-            <button className="pause-btn" onClick={advance}>
-              ⏭ Next
-            </button>
-          )}
         </div>
       </div>
 
-      {/* Main game area */}
-      <div className="game-main">
-        {/* Customer panel */}
-        <div className="game-panel customer-panel">
-          <div className="panel-header customer-header">
-            <span>CUSTOMER #{current.id}</span>
-            <span className={`type-pill ${current.type}`}>
-              {current.type === 'legitimate' ? '✓ Legitimate' : '⚠ Adversarial'}
-            </span>
-          </div>
-
-          <div className="customer-profile">
-            <Avatar customer={current.customer} />
-            <div className="customer-info">
-              <div className="customer-name">{current.customer.name}</div>
-              <div className="customer-request">{current.customer.requestLabel}</div>
-            </div>
-          </div>
-
-          <div className="dialogue-box">
-            <div className="dialogue-label">SAYS:</div>
-            <p className="dialogue-text">
-              "{typewriterText}
-              {phase === 'customer' && typewriterText.length < current.customer.dialogue.length && (
-                <span className="cursor">|</span>
-              )}"
-            </p>
-          </div>
-
-          <div className="documents-section">
-            <div className="docs-label">Documents presented:</div>
-            {current.customer.documents.map((doc, i) => (
-              <div key={i} className="doc-tag">📄 {doc}</div>
-            ))}
-          </div>
-
-          {/* Cowboy sprite decoration */}
+      {/* ── Scene stage ──────────────────────────────────────────────────── */}
+      <div className="scene-stage">
+        {/* Background */}
+        {!bgError ? (
           <img
-            className="cowboy-sprite"
-            src={cowboyImg}
+            className="scene-bg-img"
+            src={bgPrimary}
             alt=""
-            onError={(e) => { e.target.style.display = 'none' }}
+            onError={(e) => {
+              if (e.target.src.includes(bgPrimary)) { e.target.src = bgFallback }
+              else { setBgError(true) }
+            }}
           />
+        ) : (
+          <div className="scene-bg-css" />
+        )}
+        <div className="scene-vignette" />
+
+        {/* Demo badge */}
+        {isDemoPhase && <div className="demo-badge">⚠ BASE AGENT — No System Prompt</div>}
+
+        {/* Customer character — left side */}
+        <div className={`char-slot char-slot-left ${step === 'approach' ? 'char-trot-in' : step === 'exit' ? 'char-trot-out' : 'char-present'}`}>
+          {step !== 'approach' && (
+            <div className="char-portrait-wrap">
+              {getCustomerPortrait(current.customer.emoji, custActive)}
+              <div className={`char-nameplate ${custActive ? 'nameplate-active' : ''}`}>
+                {current.customer.name}
+              </div>
+            </div>
+          )}
+          {step === 'approach' && (
+            <div className="char-portrait-wrap char-walking">
+              {getCustomerPortrait(current.customer.emoji, false)}
+            </div>
+          )}
         </div>
 
-        {/* Agent panel */}
-        <div className="game-panel agent-panel">
-          <div className="panel-header agent-header">
-            <span>AGENT TELLER</span>
-            <span className="phase-indicator">
-              {phase === 'customer' && '⏳ Listening...'}
-              {phase === 'thinking' && '🧠 Thinking...'}
-              {phase === 'action' && '⚡ Acting'}
-              {phase === 'result' && '📋 Result'}
-            </span>
+        {/* Teller character — right side, always visible */}
+        <div className="char-slot char-slot-right">
+          <div className="char-portrait-wrap">
+            <TellerPortrait active={agentActive} />
+            <div className={`char-nameplate ${agentActive ? 'nameplate-active' : ''}`}>
+              {isDemoPhase ? 'Bank Teller (Base Agent)' : 'Bank Teller'}
+            </div>
           </div>
+        </div>
+      </div>
 
-          {(phase === 'thinking' || phase === 'action' || phase === 'result') && (
-            <div className="thinking-box">
-              <div className="thinking-label">REASONING:</div>
-              <p className="thinking-text">{current.agent.thinking}</p>
-            </div>
-          )}
-
-          {(phase === 'action' || phase === 'result') && (
-            <div className="action-box">
-              <div className="action-label">ACTION TAKEN:</div>
-              <div
-                className="action-chip"
-                style={{ background: current.agent.actionColor + '22', borderColor: current.agent.actionColor, color: current.agent.actionColor }}
+      {/* ── Dialogue panel ───────────────────────────────────────────────── */}
+      <div className="dialogue-panel">
+        {!isResultPhase && (
+          <>
+            {speakerName && <div className="dp-speaker">{speakerName}</div>}
+            <p className={`dp-text ${!speakerName ? 'dp-text-ambient' : ''}`}>
+              {dialogueLine}
+              {(step === 'talking' || step === 'responding') && (
+                <span className="cursor">|</span>
+              )}
+            </p>
+            {step === 'responding' && (
+              <div className="dp-action-chip"
+                style={{ borderColor: currentAgent.actionColor, color: currentAgent.actionColor, background: currentAgent.actionColor + '18' }}
               >
-                {current.agent.actionLabel}
+                {currentAgent.actionLabel}
               </div>
-              <code className="action-code">{current.agent.action}</code>
-              <div className="response-label">RESPONSE TO CUSTOMER:</div>
-              <p className="response-text">
-                "{agentText}
-                {phase === 'action' && agentText.length < current.agent.response.length && (
-                  <span className="cursor">|</span>
-                )}"
-              </p>
-            </div>
-          )}
-
-          {phase === 'result' && (
-            <div className="result-section">
-              <div className="result-label">SCORE — INTERACTION #{current.id}</div>
-              <div className="result-badges">
-                {DIMS.map((dim) => (
-                  <ResultBadge key={dim} value={current.result[dim]} label={DIMENSION_LABELS[dim]} />
-                ))}
-              </div>
-              <div className="explanation-box">
-                {current.explanation}
-              </div>
-            </div>
-          )}
-
-          {phase === 'customer' && (
-            <div className="waiting-state">
-              <div className="waiting-text">Awaiting customer approach...</div>
-            </div>
-          )}
-        </div>
+            )}
+          </>
+        )}
+        {isResultPhase && (
+          <ResultDisplay
+            result={current.result}
+            explanation={current.explanation}
+            isDemoPhase={isDemoPhase}
+          />
+        )}
       </div>
 
-      {/* Score tracker */}
-      <div className="score-tracker">
-        <div className="score-tracker-title">RUNNING SCORES</div>
-        <div className="score-bars">
-          {DIMS.map((dim) => (
-            <ScoreBar
-              key={dim}
-              label={DIMENSION_LABELS[dim]}
-              rate={getDimRate(dim)}
-              showRate={completed.length > 0}
-            />
-          ))}
+      {/* ── Score strip (autonomous only, after at least 1 completed) ────── */}
+      {gamePhase === 'autonomous' && completed.length > 0 && (
+        <div className="score-strip">
+          {DIMS.map((d) => {
+            const rate = getDimRate(d)
+            const color = rate >= 90 ? '#2d7a3a' : rate >= 75 ? '#c8a040' : '#8b2020'
+            return (
+              <div key={d} className="ss-item">
+                <span className="ss-label">{DIMENSION_LABELS[d]}</span>
+                <div className="ss-track">
+                  <div className="ss-fill" style={{ width: `${rate}%`, background: color }} />
+                </div>
+                <span className="ss-pct" style={{ color }}>{rate}%</span>
+              </div>
+            )
+          })}
         </div>
-      </div>
+      )}
 
-      {/* Done overlay */}
-      {done && (
+      {/* ── Prompt editor overlay ─────────────────────────────────────────── */}
+      {gamePhase === 'prompt_edit' && (
+        <PromptEditor onDeploy={(_prompt) => {
+          setGamePhase('autonomous')
+          setAutoIdx(0)
+          setStep('approach')
+          setCustText('')
+          setAgentText('')
+        }} />
+      )}
+
+      {/* ── Complete overlay ──────────────────────────────────────────────── */}
+      {gamePhase === 'complete' && (
         <div className="done-overlay">
           <div className="done-card">
             <div className="done-icon">🤠</div>
