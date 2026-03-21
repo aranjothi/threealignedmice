@@ -25,7 +25,7 @@ function App() {
           </button>
           <button className="btn btn-learn">
             <span className="btn-icon">✦</span>
-            Learn More
+            About
           </button>
         </div>
       </div>
