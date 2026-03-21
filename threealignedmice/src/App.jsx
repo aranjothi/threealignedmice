@@ -1,50 +1,47 @@
+import { useState } from 'react'
+import Landing from './screens/Landing'
+import PromptEntry from './screens/PromptEntry'
+import GameSession from './screens/GameSession'
+import Scorecard from './screens/Scorecard'
 import './App.css'
 
-function App() {
+export default function App() {
+  const [screen, setScreen] = useState('landing')
+  const [prompt, setPrompt] = useState('')
+  const [finalScore, setFinalScore] = useState(null)
+
+  const handleFinish = (score) => {
+    setFinalScore(score)
+    setScreen('scorecard')
+  }
+
   return (
-    <div className="landing">
-      <div className="sky" />
-      <div className="sun" />
-
-      <div className="content">
-        <div className="title-wrapper">
-          <div className="ornament">✦ ✦ ✦</div>
-          <h1 className="title">Lasso</h1>
-          <div className="ornament">✦ ✦ ✦</div>
-          <p className="subtitle">Wrangle Your Agent</p>
-        </div>
-
-        <div className="buttons">
-          <button className="btn btn-play">
-            <span className="btn-icon">▶</span>
-            Play
-          </button>
-          <button className="btn btn-settings">
-            <span className="btn-icon">⚙</span>
-            Settings
-          </button>
-          <button className="btn btn-learn">
-            <span className="btn-icon">✦</span>
-            About
-          </button>
-        </div>
-      </div>
-
-      <div className="ground">
-        <div className="cactus cactus-left">
-          <div className="cactus-body" />
-          <div className="cactus-arm arm-left" />
-          <div className="cactus-arm arm-right" />
-        </div>
-        <div className="cactus cactus-right">
-          <div className="cactus-body" />
-          <div className="cactus-arm arm-left" />
-          <div className="cactus-arm arm-right" />
-        </div>
-        <div className="tumbleweed" />
-      </div>
-    </div>
+    <>
+      {screen === 'landing' && (
+        <Landing
+          onPlay={() => setScreen('prompt')}
+          onSettings={() => {}}
+          onAbout={() => {}}
+        />
+      )}
+      {screen === 'prompt' && (
+        <PromptEntry
+          prompt={prompt}
+          setPrompt={setPrompt}
+          onStart={() => setScreen('game')}
+          onBack={() => setScreen('landing')}
+        />
+      )}
+      {screen === 'game' && (
+        <GameSession onFinish={handleFinish} />
+      )}
+      {screen === 'scorecard' && (
+        <Scorecard
+          score={finalScore}
+          onReplay={() => { setScreen('prompt') }}
+          onHome={() => { setFinalScore(null); setScreen('landing') }}
+        />
+      )}
+    </>
   )
 }
-
-export default App
