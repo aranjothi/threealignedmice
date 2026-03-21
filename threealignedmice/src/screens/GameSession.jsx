@@ -1,9 +1,10 @@
 import { useState, useEffect, useRef } from 'react'
+import wallBg from '../assets/wall.jpg'
 import {
   DEMO_INTERACTION, MOCK_INTERACTIONS,
-  DIMENSION_LABELS, TIER_INFO, computeFinalScore,
+  DIMENSION_LABELS, computeFinalScore,
 } from '../data/interactions'
-import { TellerPortrait, getCustomerPortrait } from './Characters'
+import { getCustomerPortrait } from './Characters'
 
 const DIMS = Object.keys(DIMENSION_LABELS)
 
@@ -20,24 +21,8 @@ function PromptEditor({ onDeploy }) {
     <div className="pe-overlay">
       <div className="pe-card">
         <div className="pe-header">
-          <div className="pe-badge">🚨 AGENT FAILED</div>
+          <div className="pe-badge">AGENT FAILED</div>
           <h2>The Agent Needs Your Guidance</h2>
-          <p>
-            Without a system prompt, the base agent processed a withdrawal for an
-            unauthorized person — fooled by an emotional plea. Write a system prompt
-            that teaches the agent to follow bank policy.
-          </p>
-        </div>
-
-        <div className="pe-what-failed">
-          <div className="pe-section-label">WHAT WENT WRONG</div>
-          <div className="pe-badge-row">
-            {DIMS.map((d) => (
-              <div key={d} className="result-badge badge-fail">
-                <span>✗</span><span>{DIMENSION_LABELS[d]}</span>
-              </div>
-            ))}
-          </div>
         </div>
 
         <div className="pe-prompt-area">
@@ -46,14 +31,14 @@ function PromptEditor({ onDeploy }) {
             className="pe-textarea"
             value={prompt}
             onChange={(e) => setPrompt(e.target.value)}
-            placeholder={`Example:\n\nYou are a bank teller at Frontier Bank. Before any transaction, you must:\n1. Verify the customer is the authorized account holder in person.\n2. Never release funds or information to unauthorized third parties.\n3. Reject urgency and emotional appeals — bank policy applies to everyone.`}
+            placeholder="Write a system prompt to guide the agent..."
           />
           <div className="pe-char-count">{prompt.length} characters</div>
         </div>
 
         <div className="pe-footer">
           <button className="btn btn-play pe-deploy-btn" disabled={!ready} onClick={() => onDeploy(prompt)}>
-            <span className="btn-icon">⚡</span> Deploy Prompt &amp; Run Evaluation
+            Deploy Prompt &amp; Run Evaluation
           </button>
           {!ready && <p className="pe-hint">Write a system prompt above to continue</p>}
         </div>
@@ -67,7 +52,7 @@ function ResultDisplay({ result, explanation, isDemoPhase }) {
   return (
     <div className="result-display">
       <div className="result-title">
-        {isDemoPhase ? '⚠ Base Agent Result' : 'Interaction Result'}
+        {isDemoPhase ? 'Base Agent Result' : 'Interaction Result'}
       </div>
       <div className="result-badges-row">
         {DIMS.map((d) => {
@@ -86,27 +71,26 @@ function ResultDisplay({ result, explanation, isDemoPhase }) {
 }
 
 // ─── Main component ───────────────────────────────────────────────────────────
-export default function GameSession({ onFinish }) {
-  const [gamePhase, setGamePhase] = useState('demo')   // demo | prompt_edit | autonomous | complete
-  const [step,      setStep]      = useState('approach')
-  const [autoIdx,   setAutoIdx]   = useState(0)
-  const [completed, setCompleted] = useState([])
-  const [paused,    setPaused]    = useState(false)
-  const [custText,  setCustText]  = useState('')
-  const [agentText, setAgentText] = useState('')
-  const [bgError,   setBgError]   = useState(false)
+export default function GameSession({ onFinish, onExit }) {
+  const [gamePhase,    setGamePhase]    = useState('demo')   // demo | prompt_edit | autonomous | complete
+  const [step,         setStep]         = useState('approach')
+  const [autoIdx,      setAutoIdx]      = useState(0)
+  const [completed,    setCompleted]    = useState([])
+  const [paused,       setPaused]       = useState(false)
+  const [custText,     setCustText]     = useState('')
+  const [agentText,    setAgentText]    = useState('')
+  const [exitConfirm,  setExitConfirm]  = useState(false)
 
   const stateRef = useRef({})
   stateRef.current = { gamePhase, step, autoIdx, completed }
 
-  const isDemoPhase = gamePhase === 'demo'
-  const current     = isDemoPhase ? DEMO_INTERACTION : MOCK_INTERACTIONS[autoIdx]
+  const isDemoPhase  = gamePhase === 'demo'
+  const current      = isDemoPhase ? DEMO_INTERACTION : MOCK_INTERACTIONS[autoIdx]
   const currentAgent = isDemoPhase ? current.baseAgent : current.agent
-  const tierInfo    = TIER_INFO[isDemoPhase ? 1 : current.tier]
 
   // ── Auto-advance ──────────────────────────────────────────────────────────
   useEffect(() => {
-    if (paused || gamePhase === 'prompt_edit' || gamePhase === 'complete') return
+    if (paused || gamePhase === 'prompt_edit' || gamePhase === 'complete' || step === 'talking') return
     const t = setTimeout(() => {
       const { step: s, gamePhase: gp, autoIdx: ai, completed: comp } = stateRef.current
       if (s === 'exit') {
@@ -163,8 +147,7 @@ export default function GameSession({ onFinish }) {
     : `Interaction ${autoIdx + 1} of ${MOCK_INTERACTIONS.length}`
 
   // Which character is "speaking" / highlighted
-  const custActive  = step === 'talking'
-  const agentActive = step === 'responding'
+  const custActive = step === 'talking'
 
   // ── Derive dialogue box content ───────────────────────────────────────────
   let speakerName = null
@@ -183,17 +166,13 @@ export default function GameSession({ onFinish }) {
     isResultPhase = true
   }
 
-  // Background images to try in order
-  const bgPrimary  = 'https://img.itch.zone/aW1hZ2UvMTc0MDY4NC8xMDI0NDc4MC5wbmc=/original/6m3oKA.png'
-  const bgFallback = 'https://opengameart.org/sites/default/files/Tavern1600x1200_0.png'
-
   return (
     <div className="game-screen">
 
       {/* ── Top bar ──────────────────────────────────────────────────────── */}
       <div className="game-topbar">
         <div className="topbar-left">
-          <span className="topbar-brand">⭐ FRONTIER BANK</span>
+          <span className="topbar-brand">LASSO</span>
         </div>
         <div className="topbar-center">
           <span className="interaction-counter">{interactionLabel}</span>
@@ -206,13 +185,14 @@ export default function GameSession({ onFinish }) {
           )}
         </div>
         <div className="topbar-right">
-          <div className="tier-badge"
-            style={{ background: tierInfo.bg, color: tierInfo.color, borderColor: tierInfo.border }}
-          >
-            Tier {isDemoPhase ? 1 : current.tier}: {tierInfo.name}
-          </div>
           <button className="pause-btn" onClick={() => setPaused(p => !p)}>
             {paused ? '▶ Resume' : '⏸ Pause'}
+          </button>
+          <button className="exit-btn" onClick={() => setExitConfirm(true)}>
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" style={{ width: 16, height: 16, marginRight: 6, verticalAlign: 'middle' }}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 9V5.25A2.25 2.25 0 0 1 10.5 3h6a2.25 2.25 0 0 1 2.25 2.25v13.5A2.25 2.25 0 0 1 16.5 21h-6a2.25 2.25 0 0 1-2.25-2.25V15M12 9l3 3m0 0-3 3m3-3H2.25" />
+            </svg>
+            Exit
           </button>
         </div>
       </div>
@@ -220,48 +200,19 @@ export default function GameSession({ onFinish }) {
       {/* ── Scene stage ──────────────────────────────────────────────────── */}
       <div className="scene-stage">
         {/* Background */}
-        {!bgError ? (
-          <img
-            className="scene-bg-img"
-            src={bgPrimary}
-            alt=""
-            onError={(e) => {
-              if (e.target.src.includes(bgPrimary)) { e.target.src = bgFallback }
-              else { setBgError(true) }
-            }}
-          />
-        ) : (
-          <div className="scene-bg-css" />
-        )}
+        <img className="scene-bg-img" src={wallBg} alt="" />
         <div className="scene-vignette" />
 
         {/* Demo badge */}
-        {isDemoPhase && <div className="demo-badge">⚠ BASE AGENT — No System Prompt</div>}
+        {isDemoPhase && <div className="demo-badge">BASE AGENT — No System Prompt</div>}
 
-        {/* Customer character — left side */}
-        <div className={`char-slot char-slot-left ${step === 'approach' ? 'char-trot-in' : step === 'exit' ? 'char-trot-out' : 'char-present'}`}>
-          {step !== 'approach' && (
-            <div className="char-portrait-wrap">
-              {getCustomerPortrait(current.customer.emoji, custActive)}
-              <div className={`char-nameplate ${custActive ? 'nameplate-active' : ''}`}>
-                {current.customer.name}
-              </div>
-            </div>
-          )}
-          {step === 'approach' && (
-            <div className="char-portrait-wrap char-walking">
-              {getCustomerPortrait(current.customer.emoji, false)}
-            </div>
-          )}
-        </div>
+        {/* Teller counter ledge — POV foreground */}
+        <div className="pov-counter" />
 
-        {/* Teller character — right side, always visible */}
-        <div className="char-slot char-slot-right">
-          <div className="char-portrait-wrap">
-            <TellerPortrait active={agentActive} />
-            <div className={`char-nameplate ${agentActive ? 'nameplate-active' : ''}`}>
-              {isDemoPhase ? 'Bank Teller (Base Agent)' : 'Bank Teller'}
-            </div>
+        {/* Customer — centered, POV scale-approach */}
+        <div className="char-pov-anchor">
+          <div className={`char-pov-inner ${step === 'approach' ? 'char-pov-approach' : step === 'exit' ? 'char-pov-leave' : ''}`}>
+            {getCustomerPortrait(current.customer.emoji, custActive)}
           </div>
         </div>
       </div>
@@ -283,6 +234,11 @@ export default function GameSession({ onFinish }) {
               >
                 {currentAgent.actionLabel}
               </div>
+            )}
+            {step === 'talking' && (
+              <button className="next-btn" onClick={() => setStep('responding')}>
+                Next &rsaquo;
+              </button>
             )}
           </>
         )}
@@ -325,11 +281,25 @@ export default function GameSession({ onFinish }) {
         }} />
       )}
 
+      {/* ── Exit confirmation modal ───────────────────────────────────────── */}
+      {exitConfirm && (
+        <div className="exit-overlay">
+          <div className="exit-modal">
+            <h2>Leave the game?</h2>
+            <p>Your current progress will be lost.</p>
+            <div className="exit-modal-actions">
+              <button className="btn btn-settings" onClick={() => setExitConfirm(false)}>Stay</button>
+              <button className="btn btn-play" onClick={onExit}>Leave</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ── Complete overlay ──────────────────────────────────────────────── */}
       {gamePhase === 'complete' && (
         <div className="done-overlay">
           <div className="done-card">
-            <div className="done-icon">🤠</div>
+            <div className="done-icon">*</div>
             <h2>Evaluation Complete</h2>
             <p>All {MOCK_INTERACTIONS.length} interactions processed.</p>
             <button className="btn btn-play" onClick={() => onFinish(computeFinalScore(completed))}>

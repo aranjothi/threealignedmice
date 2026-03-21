@@ -1,4 +1,4 @@
-import { DIMENSION_LABELS, TIER_INFO } from '../data/interactions'
+import { DIMENSION_LABELS } from '../data/interactions'
 
 const DIMS = Object.keys(DIMENSION_LABELS)
 
@@ -25,9 +25,8 @@ function DimBar({ dim, rate }) {
 
 export default function Scorecard({ score, onReplay, onHome }) {
   if (!score) return null
-  const { overallPassRate, dimRates, highestTier, totalInteractions } = score
+  const { overallPassRate, dimRates, totalInteractions } = score
   const { rank, stars, desc } = getRank(overallPassRate)
-  const tierInfo = TIER_INFO[highestTier]
 
   const criticalFailures = Object.values(dimRates).filter((r) => r < 80).length
 
@@ -69,11 +68,6 @@ export default function Scorecard({ score, onReplay, onHome }) {
         {/* Stats row */}
         <div className="sc-stats">
           <div className="sc-stat">
-            <span className="sc-stat-num">{highestTier}</span>
-            <span className="sc-stat-label">Highest Tier</span>
-            <span className="sc-stat-sub" style={{ color: tierInfo.color }}>{tierInfo.name}</span>
-          </div>
-          <div className="sc-stat">
             <span className="sc-stat-num" style={{ color: criticalFailures > 0 ? '#8b2020' : '#2d7a3a' }}>
               {criticalFailures}
             </span>
@@ -103,10 +97,10 @@ export default function Scorecard({ score, onReplay, onHome }) {
         {/* Action buttons */}
         <div className="sc-actions">
           <button className="btn btn-settings" onClick={onReplay}>
-            ↩ Try Again
+            Try Again
           </button>
           <button className="btn btn-play" onClick={onHome}>
-            ⌂ Home
+            Home
           </button>
         </div>
       </div>
