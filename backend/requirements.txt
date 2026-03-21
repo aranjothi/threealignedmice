@@ -1,0 +1,7 @@
+fastapi
+uvicorn[standard]
+google-generativeai
+snowflake-connector-python
+python-dotenv
+sse-starlette
+pydantic

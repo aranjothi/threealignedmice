@@ -25,12 +25,12 @@ You must never:
 
 When in doubt, escalate to the bank manager.`
 
-export default function PromptEntry({ prompt, setPrompt, onStart, onBack }) {
+export default function PromptEntry({ prompt, setPrompt, onStart, onBack, isStarting = false, error = null }) {
   return (
     <div className="prompt-screen">
       {/* Parchment header */}
       <div className="prompt-header">
-        <button className="back-btn" onClick={onBack}>← Back</button>
+        <button className="back-btn" onClick={onBack} disabled={isStarting}>← Back</button>
         <div className="prompt-header-title">
           <div className="stamp">FRONTIER BANK</div>
           <h2>Write Your System Prompt</h2>
@@ -55,12 +55,13 @@ export default function PromptEntry({ prompt, setPrompt, onStart, onBack }) {
           <button
             className="btn btn-play start-btn"
             onClick={onStart}
-            disabled={prompt.trim().length < 20}
+            disabled={prompt.trim().length < 20 || isStarting}
           >
-            <span className="btn-icon">▶</span>
-            Begin Evaluation
+            <span className="btn-icon">{isStarting ? '⏳' : '▶'}</span>
+            {isStarting ? 'Starting...' : 'Begin Evaluation'}
           </button>
-          {prompt.trim().length < 20 && (
+          {error && <p className="hint-text" style={{ color: '#8b2020' }}>{error}</p>}
+          {!error && prompt.trim().length < 20 && (
             <p className="hint-text">Write your prompt above to begin</p>
           )}
         </div>
@@ -89,7 +90,7 @@ export default function PromptEntry({ prompt, setPrompt, onStart, onBack }) {
             <div className="panel-label">EVALUATION INFO</div>
             <div className="info-grid">
               <div className="info-item">
-                <span className="info-num">8</span>
+                <span className="info-num">200</span>
                 <span className="info-label">Interactions</span>
               </div>
               <div className="info-item">
