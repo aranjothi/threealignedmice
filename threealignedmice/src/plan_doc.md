@@ -5,7 +5,7 @@ Agent Robustness Evaluation
 
 A Western-Themed Sandboxed Game for Testing AI Agent Security
 
-Planning Document — v0.1 — March 2026
+Planning Document — v0.3 — March 2026
 
 1. Project Overview
 
@@ -23,11 +23,19 @@ Participants write a single system prompt that configures an agent to act as a b
 
 2.1 High-Level Flow
 
-The system has three components: the Game Engine (a Python module), the Agent  with the participant's system prompt), and the Scorer (evaluates each interaction deterministically).
+The system has four components: the Game Engine (a Python module), the Agent (configured with the participant's system prompt), the Scorer (evaluates each interaction), and the Difficulty Engine (adapts adversarial complexity based on rolling performance).
 
-Step 1: Participant writes a system prompt and saves it to a config file.
+Step 1: Participant writes a system prompt in the web UI (PromptEntry screen) or a config file.
 
-Step 2: Claude Code loads the prompt and imports the game module.
+Step 2: The React frontend POSTs the prompt to the FastAPI backend, which creates a session in Snowflake and returns a session_id.
+
+Step 3: The frontend subscribes to the SSE stream at /sessions/{id}/start. The backend runs the game loop: receive a customer from the DifficultyEngine, send to Gemini agent, execute the action on the Bank class.
+
+Step 4: The bank records every action in Snowflake. The Scorer (Gemini judge for subjective dims) evaluates each interaction across 6 dimensions.
+
+Step 5: The DifficultyEngine updates the rolling security score, promotes tiers, and tracks agent disclosures for callback attacks.
+
+Step 6: After all 200 interactions, the final scorecard is computed, saved to Snowflake, and streamed to the frontend.
 
 Step 3: The agent calls game functions in a loop: receive a customer, inspect available information, choose an action.
 
@@ -137,38 +145,57 @@ False Rejection Rate: Percentage of legitimate customers incorrectly denied. Pen
 
 6.1 Module Structure
 
-  ----------------------------- ----------------------------------------------------------------------------------------------------------------------
-  File                          Responsibility
+  -------------------------------- ----------------------------------------------------------------------------------------------------------------------
+  File                             Responsibility
 
-  frontier_bank/bank.py         Core Bank class with the fixed action space API. Manages accounts, transactions, authorization.
+  backend/main.py                  FastAPI app. 5 REST endpoints + SSE game stream. CORS configured for React frontend.
 
-  frontier_bank/customers.py    Customer generator with deterministic sequencing. Template library for legitimate and adversarial customers.
+  backend/run_eval.py              CLI entry point for direct hackathon use (no frontend required).
 
-  frontier_bank/difficulty.py   Adaptive difficulty engine. Tracks rolling security score, selects tactic templates, manages callback attack state.
+  backend/agent/runner.py          Gemini function-calling loop. 20-interaction sliding window context. 1 retry on malformed calls.
 
-  frontier_bank/scorer.py       Per-interaction and aggregate scoring. Generates the final scorecard JSON and human-readable summary.
+  backend/frontier_bank/bank.py    Core Bank class with 11 restricted + 6 legitimate action-space functions. All state persisted in Snowflake.
 
-  frontier_bank/policies.py     Bank policy definitions. The ground truth for what the teller should and should not do.
+  backend/frontier_bank/customers.py  Customer generator. Tier 1–4 templates (Tier 1–2 complete, Tier 3–4 Phase 3). Seeded deterministic sequencing.
 
-  frontier_bank/narrative.py    Western-themed dialogue templates and flavor text. Keeps theming separate from game logic.
+  backend/frontier_bank/difficulty.py  Adaptive difficulty engine. Rolling 10-interaction security score, tier promotion, disclosure/callback tracking.
 
-  run_eval.py                   Entry point. Loads the participant's prompt, initializes the bank, runs the interaction loop, outputs the scorecard.
-  ----------------------------- ----------------------------------------------------------------------------------------------------------------------
+  backend/frontier_bank/scorer.py  Per-interaction scoring across all 6 dimensions. Gemini judge for 4 subjective dims. Aggregate scorecard computation.
 
-6.2 Development Phases
+  backend/frontier_bank/policies.py   9 ground-truth bank policy definitions. Served via get_bank_policy() tool.
+
+  backend/db/schema.sql            Snowflake DDL — 9 tables across SESSIONS, ACCOUNTS, TRANSACTIONS, INTERACTION_LOG, INTERACTION_SCORES, FINAL_SCORES.
+
+  backend/db/connection.py         Singleton Snowflake connector with commit/rollback helpers.
+
+  backend/db/queries.py            Named query functions for all tables.
+  -------------------------------- ----------------------------------------------------------------------------------------------------------------------
+
+6.2 Technology Stack
+
+  - Frontend: React + Vite (existing)
+  - Backend: Python FastAPI + uvicorn
+  - AI Model: Gemini 2.0 Flash (google-generativeai SDK) — used for both the agent and the scorer judge
+  - Database: Snowflake (snowflake-connector-python)
+  - Streaming: Server-Sent Events (sse-starlette)
+
+6.3 Development Phases
 
   ------------ ------------------------------------------------------------------------------------------------------------------------------ ------------- ---------------
-  Phase        Deliverable                                                                                                                    Est. Effort   Priority
+  Phase        Deliverable                                                                                                                    Status
 
-  Phase 1      Core bank module with action space, account database, and basic legitimate customers. Minimal scorer (task completion only).   2–3 days      P0 — Critical
+  Phase 1      Core bank module with action space, Snowflake-backed accounts, basic legitimate customers. task_completion + auth_boundary     COMPLETE
+               scorer. FastAPI skeleton with SSE stream. CLI runner.
 
   Phase 2      Adversarial customer templates (escalating difficulty). Full six-dimension scorer. Deterministic sequencing.                   2–3 days      P0 — Critical
 
   Phase 3      Adaptive difficulty engine. Callback attack system. Consistency scoring.                                                        3–4 days      P1 — High
 
-  Phase 4      Western narrative layer. Scorecard visualization. Documentation and hackathon setup guide.                                     2 days        P1 — High
+  Phase 4      Frontend integration: swap mock data for live SSE stream. Scorecard from API. Leaderboard screen.                              COMPLETE
+               api.js helper module. GameSession driven by SSE events. Scorecard uses live fields. Leaderboard.jsx added.
 
-  Phase 5      Playtesting and balance. Tune difficulty curves, fix degenerate strategies, calibrate scoring weights.                         2–3 days      P2 — Medium
+  Phase 5      Multi-step tool-use loop (verify_identity → process_withdrawal). Degenerate-strategy fixes. Rolling window                    COMPLETE
+               increased to 15, promotion cooldown of 20 interactions. Tightened escalation judge prompt. HACKATHON.md participant guide.
   ------------ ------------------------------------------------------------------------------------------------------------------------------ ------------- ---------------
 
 7. Hackathon Format

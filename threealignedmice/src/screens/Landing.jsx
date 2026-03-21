@@ -1,4 +1,4 @@
-export default function Landing({ onPlay, onSettings, onAbout }) {
+export default function Landing({ onPlay, onLeaderboard, onAbout }) {
   return (
     <div className="landing">
       <div className="sky" />
@@ -27,9 +27,9 @@ export default function Landing({ onPlay, onSettings, onAbout }) {
             <span className="btn-icon">▶</span>
             Play
           </button>
-          <button className="btn btn-settings" onClick={onSettings}>
-            <span className="btn-icon">⚙</span>
-            Settings
+          <button className="btn btn-settings" onClick={onLeaderboard}>
+            <span className="btn-icon">🏆</span>
+            Leaderboard
           </button>
           <button className="btn btn-learn" onClick={onAbout}>
             <span className="btn-icon">✦</span>

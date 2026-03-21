@@ -7,16 +7,14 @@ import {
 import { getCustomerPortrait } from './Characters'
 
 const DIMS = Object.keys(DIMENSION_LABELS)
+const TOTAL_INTERACTIONS = 200
 
-// ─── Phase config ─────────────────────────────────────────────────────────────
-const STEP_ORDER  = ['approach', 'talking', 'responding', 'result', 'exit']
-const STEP_DELAYS = { approach: 1800, talking: 3800, responding: 3800, result: 4000, exit: 700 }
+// How long to stay on the customer panel before switching to "thinking"
+const THINKING_DELAY_MS = 2500
 
-// ─── Prompt Editor overlay ────────────────────────────────────────────────────
-function PromptEditor({ onDeploy }) {
-  const [prompt, setPrompt] = useState('')
-  const ready = prompt.trim().length >= 10
-
+function Avatar({ name, type }) {
+  const color = type === 'adversarial' ? '#8b3a3a' : '#3a6b3a'
+  const emoji = type === 'adversarial' ? '🤠' : '👤'
   return (
     <div className="pe-overlay">
       <div className="pe-card">
@@ -47,8 +45,16 @@ function PromptEditor({ onDeploy }) {
   )
 }
 
-// ─── Result display ───────────────────────────────────────────────────────────
-function ResultDisplay({ result, explanation, isDemoPhase }) {
+function ResultBadge({ value, label }) {
+  // value is true/false/null from backend
+  if (value === null || value === undefined) {
+    return (
+      <div className="result-badge badge-pending">
+        <span>–</span>
+        <span>{label}</span>
+      </div>
+    )
+  }
   return (
     <div className="result-display">
       <div className="result-title">
@@ -81,8 +87,10 @@ export default function GameSession({ onFinish, onExit }) {
   const [agentText,    setAgentText]    = useState('')
   const [exitConfirm,  setExitConfirm]  = useState(false)
 
-  const stateRef = useRef({})
-  stateRef.current = { gamePhase, step, autoIdx, completed }
+  // Pending result received while still in customer/thinking phase
+  const pendingResultRef = useRef(null)
+  const pausedRef = useRef(false)
+  pausedRef.current = paused
 
   const isDemoPhase  = gamePhase === 'demo'
   const current      = isDemoPhase ? DEMO_INTERACTION : MOCK_INTERACTIONS[autoIdx]
@@ -92,59 +100,69 @@ export default function GameSession({ onFinish, onExit }) {
   useEffect(() => {
     if (paused || gamePhase === 'prompt_edit' || gamePhase === 'complete' || step === 'talking') return
     const t = setTimeout(() => {
-      const { step: s, gamePhase: gp, autoIdx: ai, completed: comp } = stateRef.current
-      if (s === 'exit') {
-        if (gp === 'demo') {
-          setGamePhase('prompt_edit')
-        } else {
-          const newCompleted = [...comp, MOCK_INTERACTIONS[ai]]
-          setCompleted(newCompleted)
-          if (ai < MOCK_INTERACTIONS.length - 1) {
-            setAutoIdx(ai + 1)
-            setStep('approach')
-            setCustText('')
-            setAgentText('')
-          } else {
-            setGamePhase('complete')
-            onFinish(computeFinalScore(newCompleted))
-          }
+      setPhase((prev) => {
+        if (prev !== 'customer') return prev
+        // If result already arrived, go straight to result
+        if (pendingResultRef.current) {
+          const r = pendingResultRef.current
+          pendingResultRef.current = null
+          setResult(r)
+          setCompleted((c) => [...c, r])
+          return 'result'
         }
-      } else {
-        setStep(STEP_ORDER[STEP_ORDER.indexOf(s) + 1])
-      }
-    }, STEP_DELAYS[step])
+        return 'thinking'
+      })
+    }, THINKING_DELAY_MS)
     return () => clearTimeout(t)
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [step, paused, gamePhase])
+  }, [phase, paused, interactionNum])
 
-  // ── Typewriter: customer ──────────────────────────────────────────────────
+  // ── Advance thinking → result when pending result arrives ──────────────────
   useEffect(() => {
-    if (step !== 'talking') return
-    setCustText('')
-    const text = current.customer.dialogue
+    if (phase !== 'thinking' || paused) return
+    if (!pendingResultRef.current) return
+    const r = pendingResultRef.current
+    pendingResultRef.current = null
+    setResult(r)
+    setCompleted((c) => [...c, r])
+    setPhase('result')
+  }, [phase, paused])
+
+  // ── Typewriter — customer dialogue ─────────────────────────────────────────
+  useEffect(() => {
+    if (phase !== 'customer' || !customer) return
+    setTypewriterText('')
+    const text = customer.dialogue
     let i = 0
-    const iv = setInterval(() => { setCustText(text.slice(0, ++i)); if (i >= text.length) clearInterval(iv) }, 22)
-    return () => clearInterval(iv)
-  }, [step, current])
+    const interval = setInterval(() => {
+      setTypewriterText(text.slice(0, i + 1))
+      i++
+      if (i >= text.length) clearInterval(interval)
+    }, 22)
+    return () => clearInterval(interval)
+  }, [interactionNum, phase, customer])
 
-  // ── Typewriter: agent ─────────────────────────────────────────────────────
+  // ── Typewriter — agent response ─────────────────────────────────────────────
   useEffect(() => {
-    if (step !== 'responding') return
+    if (phase !== 'result' || !result) return
     setAgentText('')
-    const text = currentAgent.response
+    const text = result.agent_response || ''
     let i = 0
-    const iv = setInterval(() => { setAgentText(text.slice(0, ++i)); if (i >= text.length) clearInterval(iv) }, 20)
-    return () => clearInterval(iv)
-  }, [step, currentAgent])
+    const interval = setInterval(() => {
+      setAgentText(text.slice(0, i + 1))
+      i++
+      if (i >= text.length) clearInterval(interval)
+    }, 18)
+    return () => clearInterval(interval)
+  }, [phase, result])
 
+  // ── Derived ─────────────────────────────────────────────────────────────────
   const getDimRate = (dim) => {
     if (!completed.length) return null
-    return Math.round(completed.filter((i) => i.result[dim] === 'pass').length / completed.length * 100)
+    const passes = completed.filter((r) => r.scores?.[dim] === true).length
+    return Math.round((passes / completed.length) * 100)
   }
 
-  const interactionLabel = isDemoPhase
-    ? 'DEMO ROUND'
-    : `Interaction ${autoIdx + 1} of ${MOCK_INTERACTIONS.length}`
+  const tier = TIER_INFO[currentTier] || TIER_INFO[1]
 
   // Which character is "speaking" / highlighted
   const custActive = step === 'talking'
@@ -168,21 +186,35 @@ export default function GameSession({ onFinish, onExit }) {
 
   return (
     <div className="game-screen">
+      <div className="saloon-bg" />
+      <div className="saloon-window saloon-window-left" />
+      <div className="saloon-window saloon-window-right" />
 
-      {/* ── Top bar ──────────────────────────────────────────────────────── */}
+      {/* Tier promotion banner */}
+      {tierPromotion && (
+        <div className="tier-promotion-banner" style={{ background: (TIER_INFO[tierPromotion.new_tier] || TIER_INFO[1]).bg, borderColor: (TIER_INFO[tierPromotion.new_tier] || TIER_INFO[1]).border }}>
+          <span style={{ color: (TIER_INFO[tierPromotion.new_tier] || TIER_INFO[1]).color }}>
+            ⬆ DIFFICULTY ESCALATED — Tier {tierPromotion.new_tier}: {(TIER_INFO[tierPromotion.new_tier] || TIER_INFO[1]).name}
+          </span>
+          <span className="tier-promotion-score">Rolling security: {tierPromotion.rolling_score}%</span>
+        </div>
+      )}
+
+      {/* Top bar */}
       <div className="game-topbar">
         <div className="topbar-left">
           <span className="topbar-brand">LASSO</span>
         </div>
         <div className="topbar-center">
-          <span className="interaction-counter">{interactionLabel}</span>
-          {!isDemoPhase && (
-            <div className="progress-track">
-              <div className="progress-fill"
-                style={{ width: `${((autoIdx + (step === 'result' ? 1 : 0)) / MOCK_INTERACTIONS.length) * 100}%` }}
-              />
-            </div>
-          )}
+          <span className="interaction-counter">
+            Interaction {interactionNum} <span className="of-total">/ {TOTAL_INTERACTIONS}</span>
+          </span>
+          <div className="progress-track">
+            <div
+              className="progress-fill"
+              style={{ width: `${(interactionNum / TOTAL_INTERACTIONS) * 100}%` }}
+            />
+          </div>
         </div>
         <div className="topbar-right">
           <button className="pause-btn" onClick={() => setPaused(p => !p)}>
@@ -263,23 +295,44 @@ export default function GameSession({ onFinish, onExit }) {
                 <div className="ss-track">
                   <div className="ss-fill" style={{ width: `${rate}%`, background: color }} />
                 </div>
-                <span className="ss-pct" style={{ color }}>{rate}%</span>
               </div>
-            )
-          })}
+              <div className="dialogue-box">
+                <div className="dialogue-label">SAYS:</div>
+                <p className="dialogue-text">
+                  "{typewriterText}
+                  {phase === 'customer' && typewriterText.length < (customer.dialogue?.length || 0) && (
+                    <span className="cursor">|</span>
+                  )}"
+                </p>
+              </div>
+              <div className="documents-section">
+                <div className="docs-label">Documents presented:</div>
+                {(customer.documents || []).map((doc, i) => (
+                  <div key={i} className="doc-tag">📄 {doc}</div>
+                ))}
+                {(!customer.documents || customer.documents.length === 0) && (
+                  <div className="doc-tag">— none</div>
+                )}
+              </div>
+            </>
+          ) : (
+            <div className="waiting-state">
+              <div className="waiting-text">Waiting for first customer...</div>
+            </div>
+          )}
         </div>
-      )}
 
-      {/* ── Prompt editor overlay ─────────────────────────────────────────── */}
-      {gamePhase === 'prompt_edit' && (
-        <PromptEditor onDeploy={(_prompt) => {
-          setGamePhase('autonomous')
-          setAutoIdx(0)
-          setStep('approach')
-          setCustText('')
-          setAgentText('')
-        }} />
-      )}
+        {/* Agent panel */}
+        <div className="game-panel agent-panel">
+          <div className="panel-header agent-header">
+            <span>AGENT TELLER</span>
+            <span className="phase-indicator">
+              {phase === 'connecting' && '⏳ Connecting...'}
+              {phase === 'customer'  && '⏳ Listening...'}
+              {phase === 'thinking'  && '🧠 Thinking...'}
+              {phase === 'result'    && '📋 Result'}
+            </span>
+          </div>
 
       {/* ── Exit confirmation modal ───────────────────────────────────────── */}
       {exitConfirm && (
@@ -301,10 +354,8 @@ export default function GameSession({ onFinish, onExit }) {
           <div className="done-card">
             <div className="done-icon">*</div>
             <h2>Evaluation Complete</h2>
-            <p>All {MOCK_INTERACTIONS.length} interactions processed.</p>
-            <button className="btn btn-play" onClick={() => onFinish(computeFinalScore(completed))}>
-              View Scorecard →
-            </button>
+            <p>All {TOTAL_INTERACTIONS} interactions processed.</p>
+            <p style={{ opacity: 0.7, fontSize: '0.9rem' }}>Loading scorecard...</p>
           </div>
         </div>
       )}

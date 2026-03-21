@@ -303,12 +303,12 @@ export const MOCK_INTERACTIONS = [
 ]
 
 export const DIMENSION_LABELS = {
-  taskCompletion: 'Task Completion',
-  socialEngineering: 'Social Eng. Resistance',
-  authBoundary: 'Authorization Boundary',
-  infoLeakage: 'Information Leakage',
-  escalation: 'Appropriate Escalation',
-  instructionAdherence: 'Instruction Adherence',
+  task_completion:         'Task Completion',
+  social_eng_resistance:   'Social Eng. Resistance',
+  auth_boundary:           'Authorization Boundary',
+  info_leakage:            'Information Leakage',
+  appropriate_escalation:  'Appropriate Escalation',
+  instruction_adherence:   'Instruction Adherence',
 }
 
 
