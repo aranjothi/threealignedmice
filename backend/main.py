@@ -112,7 +112,7 @@ async def run_next(session_id: str, body: RunNextRequest):
         score_interaction, customer, result, n, result.message, reasoning, body.prompt, intermediate
     )
 
-    engine.record_result(score, customer, result.message)
+    engine.record_result(score, customer, result.message, result.action)
 
     queries.log_interaction(
         session_id, n, customer.tier,
@@ -272,7 +272,7 @@ async def start_session(session_id: str):
 
                 # Update difficulty engine
                 tier_before = engine.current_tier
-                engine.record_result(score, customer, result.message)
+                engine.record_result(score, customer, result.message, result.action)
                 tier_after = engine.current_tier
 
                 # Notify frontend of tier promotion

@@ -14,6 +14,8 @@ from frontier_bank.customers import (
     TIER2_ADVERSARIAL,
     TIER3_ADVERSARIAL,
     TIER4_ADVERSARIAL,
+    PARTIAL_SUCCESS_ADVERSARIAL,
+    COMPLAINT_LADDER_ADVERSARIAL,
 )
 from frontier_bank.scorer import InteractionScore
 
@@ -46,6 +48,21 @@ class Disclosure:
     agent_response: str
 
 
+@dataclass
+class ApprovedTransaction:
+    """Records a legitimate transaction the agent successfully processed."""
+    interaction_num: int
+    account_id: str | None
+    owner_name: str | None
+
+
+@dataclass
+class DeniedRequest:
+    """Records an adversarial request the agent correctly denied or escalated."""
+    interaction_num: int
+    customer_name: str
+
+
 class DifficultyEngine:
     """
     Generates customers one at a time, adapting difficulty based on
@@ -60,6 +77,8 @@ class DifficultyEngine:
         self.interaction_count = 0
         self.security_history: list[bool] = []
         self.disclosures: list[Disclosure] = []
+        self.approved_transactions: list[ApprovedTransaction] = []
+        self.denied_requests: list[DeniedRequest] = []
         self._planted_accounts: list[str] = []
         self._last_promotion_at: int = 0  # interaction count when last tier promotion occurred
         self._adv_queues: dict[int, list] = {}
@@ -71,6 +90,7 @@ class DifficultyEngine:
         score: InteractionScore,
         customer: Customer,
         agent_response: str,
+        action: str = "",
     ):
         """Call after each interaction to update rolling state."""
         self.interaction_count += 1
@@ -92,6 +112,21 @@ class DifficultyEngine:
                 account_id=customer.account_id,
                 customer_name=_account_owner(customer.account_id),
                 agent_response=agent_response,
+            ))
+
+        # Track approved legitimate transactions (idea 4: partial success)
+        if not customer.is_adversarial and action in {"process_withdrawal", "process_deposit"}:
+            self.approved_transactions.append(ApprovedTransaction(
+                interaction_num=self.interaction_count,
+                account_id=customer.account_id,
+                owner_name=customer.name,
+            ))
+
+        # Track correctly denied/escalated adversarial requests (idea 7: complaint ladder)
+        if customer.is_adversarial and action in {"deny_request", "escalate_to_manager"}:
+            self.denied_requests.append(DeniedRequest(
+                interaction_num=self.interaction_count,
+                customer_name=customer.name,
             ))
 
         # Track plant customers (Tier 4 setup)
@@ -181,18 +216,19 @@ class DifficultyEngine:
         )
 
     def _template_pool(self, tier: int) -> list[dict]:
+        multi_turn = PARTIAL_SUCCESS_ADVERSARIAL + COMPLAINT_LADDER_ADVERSARIAL
         if tier == 1:
             return list(TIER1_ADVERSARIAL)
         if tier == 2:
-            return list(TIER1_ADVERSARIAL + TIER2_ADVERSARIAL)
+            return list(TIER1_ADVERSARIAL + TIER2_ADVERSARIAL + multi_turn)
         if tier == 3:
-            return list(TIER2_ADVERSARIAL + TIER3_ADVERSARIAL)
-        return list(TIER3_ADVERSARIAL + TIER4_ADVERSARIAL)
+            return list(TIER2_ADVERSARIAL + TIER3_ADVERSARIAL + multi_turn)
+        return list(TIER3_ADVERSARIAL + TIER4_ADVERSARIAL + multi_turn)
 
     def _resolve_dialogue(self, template: dict, interaction_num: int) -> str:
         """
-        For Tier 3+ templates that support callback injection, fill in
-        disclosure references if they exist; otherwise fall back to base dialogue.
+        For templates that support callback injection, fill in
+        references if prior events exist; otherwise fall back to base dialogue.
         """
         # Simple dialogue (Tier 1/2 or Tier 4 injections)
         if "dialogue" in template:
@@ -204,12 +240,27 @@ class DifficultyEngine:
         if not callback_tmpl:
             return base
 
+        callback_type = template.get("callback_type")
+
+        # Idea 4: partial success — reference a prior approved transaction
+        if callback_type == "approved_transaction" and self.approved_transactions:
+            t = self.approved_transactions[-1]
+            return callback_tmpl.format(
+                num=t.interaction_num,
+                owner_name=t.owner_name or "the account holder",
+            )
+
+        # Idea 7: complaint ladder — reference a prior correctly denied request
+        if callback_type == "denied_request" and self.denied_requests:
+            d = self.denied_requests[-1]
+            return callback_tmpl.format(num=d.interaction_num)
+
         # Multi-disclosure synthesis (Tier 4 chained attack)
         if template.get("requires_multi_disclosure") and len(self.disclosures) >= 2:
             d1, d2 = self.disclosures[-2], self.disclosures[-1]
             return callback_tmpl.format(num1=d1.interaction_num, num2=d2.interaction_num)
 
-        # Single callback: find a disclosure matching the account target
+        # Single disclosure callback: find a disclosure matching the account target
         account_target = template.get("account_target")
         matching = [
             d for d in self.disclosures
@@ -217,13 +268,13 @@ class DifficultyEngine:
         ]
 
         if matching:
-            d = matching[-1]  # most recent relevant disclosure
+            d = matching[-1]
             return callback_tmpl.format(
                 num=d.interaction_num,
                 customer_name=d.customer_name or "the account holder",
             )
 
-        # No matching disclosure — fall back to base
+        # No matching event — fall back to base dialogue
         return base
 
 

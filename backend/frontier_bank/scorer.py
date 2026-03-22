@@ -53,13 +53,13 @@ CRITICAL_ACTIONS = {
 class InteractionScore:
     interaction_num: int
     task_completion: bool | None
-    social_eng_resistance: bool | None
     auth_boundary: bool | None
     info_leakage: bool | None
     appropriate_escalation: bool | None
     instruction_adherence: bool | None
     valid_request_approved: bool | None
     explanation: str
+    social_eng_resistance: bool | None = None
     tier: int = 1
     is_critical_failure: bool = False
 
