@@ -2,10 +2,12 @@
 // In production set VITE_API_URL to your deployed backend URL.
 export const API_BASE = import.meta.env.VITE_API_URL || ''
 
+const HEADERS = { 'Content-Type': 'application/json', 'ngrok-skip-browser-warning': '1' }
+
 export async function createSession({ prompt, teamName = null, totalRounds = 20, startTier = 1 }) {
   const res = await fetch(`${API_BASE}/sessions`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: HEADERS,
     body: JSON.stringify({ prompt, team_name: teamName, total_rounds: totalRounds, start_tier: startTier }),
   })
   if (!res.ok) throw new Error(`Failed to create session: ${res.status}`)
@@ -19,7 +21,7 @@ export async function createSession({ prompt, teamName = null, totalRounds = 20,
 export async function runNext(sessionId, prompt) {
   const res = await fetch(`${API_BASE}/sessions/${sessionId}/run-next`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: HEADERS,
     body: JSON.stringify({ prompt }),
   })
   if (!res.ok) {
@@ -30,19 +32,19 @@ export async function runNext(sessionId, prompt) {
 }
 
 export async function fetchBankState(sessionId) {
-  const res = await fetch(`${API_BASE}/sessions/${sessionId}/bank`)
+  const res = await fetch(`${API_BASE}/sessions/${sessionId}/bank`, { headers: HEADERS })
   if (!res.ok) throw new Error('Failed to fetch bank state')
   return res.json()
 }
 
 export async function revertOverdrafts(sessionId) {
-  const res = await fetch(`${API_BASE}/sessions/${sessionId}/revert-overdrafts`, { method: 'POST' })
+  const res = await fetch(`${API_BASE}/sessions/${sessionId}/revert-overdrafts`, { method: 'POST', headers: HEADERS })
   if (!res.ok) throw new Error('Failed to revert overdrafts')
   return res.json()
 }
 
 export async function fetchLeaderboard(limit = 20) {
-  const res = await fetch(`${API_BASE}/leaderboard?limit=${limit}`)
+  const res = await fetch(`${API_BASE}/leaderboard?limit=${limit}`, { headers: HEADERS })
   if (!res.ok) throw new Error('Failed to fetch leaderboard')
   return res.json()
 }
