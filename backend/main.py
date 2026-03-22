@@ -124,11 +124,9 @@ async def run_next(session_id: str, body: RunNextRequest):
     )
     queries.log_score(session_id, n, {
         "task_completion": score.task_completion,
-        "social_eng_resistance": score.social_eng_resistance,
         "auth_boundary": score.auth_boundary,
         "info_leakage": score.info_leakage,
-        "appropriate_escalation": score.appropriate_escalation,
-        "instruction_adherence": score.instruction_adherence,
+        "appropriate_escalation": score.appropriate_escalation,\n        "instruction_adherence": score.instruction_adherence,
         "valid_request_approved": score.valid_request_approved,
     }, score.explanation)
 
@@ -140,11 +138,9 @@ async def run_next(session_id: str, body: RunNextRequest):
             InteractionScore(
                 interaction_num=s["INTERACTION_NUM"],
                 task_completion=s["TASK_COMPLETION"],
-                social_eng_resistance=s["SOCIAL_ENG_RESISTANCE"],
                 auth_boundary=s["AUTH_BOUNDARY"],
                 info_leakage=s["INFO_LEAKAGE"],
-                appropriate_escalation=s["APPROPRIATE_ESCALATION"],
-                instruction_adherence=s["INSTRUCTION_ADHERENCE"],
+                appropriate_escalation=s["APPROPRIATE_ESCALATION"],\n                instruction_adherence=s.get("INSTRUCTION_ADHERENCE"),
                 valid_request_approved=s.get("VALID_REQUEST_APPROVED"),
                 explanation=s["EXPLANATION"],
                 tier=s.get("TIER", 1),
@@ -178,11 +174,9 @@ async def run_next(session_id: str, body: RunNextRequest):
         "is_violation": result.is_violation,
         "scores": {
             "task_completion": score.task_completion,
-            "social_eng_resistance": score.social_eng_resistance,
             "auth_boundary": score.auth_boundary,
             "info_leakage": score.info_leakage,
-            "appropriate_escalation": score.appropriate_escalation,
-            "instruction_adherence": score.instruction_adherence,
+            "appropriate_escalation": score.appropriate_escalation,\n        "instruction_adherence": score.instruction_adherence,
             "valid_request_approved": score.valid_request_approved,
         },
         "is_critical_failure": score.is_critical_failure,
@@ -263,11 +257,9 @@ async def start_session(session_id: str):
                     session_id, n,
                     {
                         "task_completion": score.task_completion,
-                        "social_eng_resistance": score.social_eng_resistance,
                         "auth_boundary": score.auth_boundary,
                         "info_leakage": score.info_leakage,
-                        "appropriate_escalation": score.appropriate_escalation,
-                        "instruction_adherence": score.instruction_adherence,
+                        "appropriate_escalation": score.appropriate_escalation,\n        "instruction_adherence": score.instruction_adherence,
                         "valid_request_approved": score.valid_request_approved,
                     },
                     score.explanation,
@@ -297,11 +289,9 @@ async def start_session(session_id: str):
                     "is_violation": result.is_violation,
                     "scores": {
                         "task_completion": score.task_completion,
-                        "social_eng_resistance": score.social_eng_resistance,
                         "auth_boundary": score.auth_boundary,
                         "info_leakage": score.info_leakage,
-                        "appropriate_escalation": score.appropriate_escalation,
-                        "instruction_adherence": score.instruction_adherence,
+                        "appropriate_escalation": score.appropriate_escalation,\n        "instruction_adherence": score.instruction_adherence,
                         "valid_request_approved": score.valid_request_approved,
                     },
                     "tier": score.tier,
@@ -355,11 +345,9 @@ def get_scorecard(session_id: str):
         InteractionScore(
             interaction_num=s["INTERACTION_NUM"],
             task_completion=s["TASK_COMPLETION"],
-            social_eng_resistance=s["SOCIAL_ENG_RESISTANCE"],
             auth_boundary=s["AUTH_BOUNDARY"],
             info_leakage=s["INFO_LEAKAGE"],
-            appropriate_escalation=s["APPROPRIATE_ESCALATION"],
-            instruction_adherence=s["INSTRUCTION_ADHERENCE"],
+            appropriate_escalation=s["APPROPRIATE_ESCALATION"],\n                instruction_adherence=s.get("INSTRUCTION_ADHERENCE"),
             valid_request_approved=s.get("VALID_REQUEST_APPROVED"),
             explanation=s["EXPLANATION"],
             tier=s.get("TIER", 1),
@@ -367,6 +355,27 @@ def get_scorecard(session_id: str):
         for s in scores
     ]
     return compute_scorecard(all_scores, session_id)
+
+
+@app.get("/sessions/{session_id}/bank")
+def get_bank_state(session_id: str):
+    session = queries.get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+    accounts = queries.get_all_accounts(session_id)
+    total = round(sum(a["BALANCE"] for a in accounts if not a.get("IS_CLOSED")), 2)
+    return {
+        "total_balance": total,
+        "accounts": [
+            {
+                "account_id": a["ACCOUNT_ID"],
+                "owner_name": a["OWNER_NAME"],
+                "balance": a["BALANCE"],
+                "is_closed": bool(a.get("IS_CLOSED", False)),
+            }
+            for a in accounts
+        ],
+    }
 
 
 @app.get("/leaderboard")

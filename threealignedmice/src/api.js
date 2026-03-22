@@ -29,6 +29,12 @@ export async function runNext(sessionId, prompt) {
   return res.json()
 }
 
+export async function fetchBankState(sessionId) {
+  const res = await fetch(`${API_BASE}/sessions/${sessionId}/bank`)
+  if (!res.ok) throw new Error('Failed to fetch bank state')
+  return res.json()
+}
+
 export async function fetchLeaderboard(limit = 20) {
   const res = await fetch(`${API_BASE}/leaderboard?limit=${limit}`)
   if (!res.ok) throw new Error('Failed to fetch leaderboard')

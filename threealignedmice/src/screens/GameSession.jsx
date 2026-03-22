@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useMemo } from 'react'
 import wallBg from '../assets/wall.jpg'
 import { DIMENSION_LABELS } from '../data/interactions'
 import { getCustomerPortrait } from './Characters'
-import { createSession, runNext } from '../api'
+import { createSession, runNext, fetchBankState } from '../api'
 
 
 const STEP_ORDER  = ['approach', 'talking', 'responding', 'result', 'exit']
@@ -68,10 +68,9 @@ function PromptEditor({ onDeploy, isLoading, error }) {
         </div>
         {error && <p style={{ color: '#c04040', margin: '0 0 8px', fontSize: 13 }}>{error}</p>}
         <div className="pe-footer">
-          <button className="btn btn-play pe-deploy-btn" disabled={!ready} onClick={() => onDeploy(prompt)}>
+          <button className="btn btn-play pe-deploy-btn" disabled={isLoading} onClick={() => onDeploy(prompt)}>
             {isLoading ? 'Connecting...' : 'Deploy Prompt & Run Evaluation'}
           </button>
-          {!ready && !isLoading && <p className="pe-hint">Write a system prompt above to continue</p>}
         </div>
       </div>
     </div>
@@ -81,20 +80,23 @@ function PromptEditor({ onDeploy, isLoading, error }) {
 // ─── Round summary overlay ────────────────────────────────────────────────────
 function RoundSummary({ interactionNum, current, currentAgent, activeData, onContinue }) {
   const scores = current?.result || {}
-  const dims = Object.entries(scores)
-  const passed = dims.filter(([, v]) => v === 'pass').length
-  const failed = dims.filter(([, v]) => v === 'fail').length
+  const dims = Object.entries(scores).filter(([, v]) => v !== null)
   const isCritical = activeData?.is_critical_failure
+  const allPassed = dims.every(([, v]) => v === 'pass')
+  const roundPassed = allPassed && !isCritical
+
+  const badgeColor = isCritical ? '#ff6b6b' : roundPassed ? '#4caf50' : '#c8a040'
 
   return (
     <div className="pe-overlay">
       <div className="pe-card" style={{ maxWidth: 480 }}>
         <div className="pe-header">
           <div className="pe-badge" style={{
-            background: isCritical ? '#4a0000' : passed >= failed ? '#1a3a1a' : '#3a1a00',
-            color: isCritical ? '#ff6b6b' : passed >= failed ? '#4caf50' : '#c8a040',
+            background: isCritical ? '#4a0000' : roundPassed ? '#1a3a1a' : '#3a1a00',
+            color: badgeColor,
+            border: `1px solid ${badgeColor}`,
           }}>
-            {isCritical ? 'CRITICAL FAILURE' : passed >= failed ? 'ROUND PASSED' : 'ROOM TO IMPROVE'}
+            {isCritical ? 'CRITICAL FAILURE' : roundPassed ? 'ROUND PASSED' : 'WRONG DECISION'}
           </div>
           <h2>Round {interactionNum} Summary</h2>
         </div>
@@ -106,8 +108,8 @@ function RoundSummary({ interactionNum, current, currentAgent, activeData, onCon
               const pass = val === 'pass'
               return (
                 <div key={dim} style={{
-                  fontSize: 11, fontFamily: 'var(--teko)', letterSpacing: 1,
-                  padding: '3px 10px', borderRadius: 3,
+                  fontSize: 13, fontFamily: 'var(--teko)', letterSpacing: 1,
+                  padding: '4px 12px', borderRadius: 3,
                   border: `1px solid ${pass ? '#2d7a3a' : '#8b2020'}`,
                   color: pass ? '#4caf50' : '#e05050',
                   background: pass ? '#2d7a3a18' : '#8b202018',
@@ -122,8 +124,8 @@ function RoundSummary({ interactionNum, current, currentAgent, activeData, onCon
 
           {/* Action taken */}
           {currentAgent && (
-            <div style={{ fontSize: 12, color: '#aaa', marginTop: 4 }}>
-              <span style={{ color: '#666', fontFamily: 'var(--teko)', letterSpacing: 1, fontSize: 10 }}>ACTION — </span>
+            <div style={{ fontSize: 14, color: '#aaa', marginTop: 4 }}>
+              <span style={{ color: '#666', fontFamily: 'var(--teko)', letterSpacing: 1, fontSize: 12 }}>ACTION — </span>
               <span style={{ color: currentAgent.actionColor, fontFamily: 'var(--teko)', letterSpacing: 1 }}>
                 {currentAgent.actionLabel}
               </span>
@@ -131,7 +133,7 @@ function RoundSummary({ interactionNum, current, currentAgent, activeData, onCon
           )}
 
           {/* Explanation */}
-          <p style={{ fontSize: 13, color: '#ccc', lineHeight: 1.5, margin: '8px 0 0' }}>
+          <p style={{ fontSize: 15, color: '#8b5e3c', lineHeight: 1.6, margin: '8px 0 0' }}>
             {current?.explanation}
           </p>
         </div>
@@ -179,7 +181,7 @@ function BetweenRound({ currentPrompt, interactionNum, total, lastData, onContin
         <div className="pe-footer">
           <button
             className="btn btn-play pe-deploy-btn"
-            disabled={isLoading || prompt.trim().length < 10}
+            disabled={isLoading}
             onClick={() => onContinue(prompt)}
           >
             {isLoading ? 'Loading...' : 'Next Customer →'}
@@ -198,8 +200,11 @@ export default function GameSession({ onFinish, onExit, settings = { totalRounds
   const [paused, setPaused]       = useState(false)
   const [custText, setCustText]   = useState('')
   const [agentText, setAgentText] = useState('')
-  const [exitConfirm, setExitConfirm]       = useState(false)
+  const [exitConfirm, setExitConfirm]           = useState(false)
   const [showRoundSummary, setShowRoundSummary] = useState(false)
+  const [showDocPanel, setShowDocPanel]         = useState(false)
+  const [bankState, setBankState]               = useState(null)
+  const [showBankTable, setShowBankTable]       = useState(false)
 
   // Demo phase — real API call, no user prompt
   const [demoData, setDemoData] = useState(null)
@@ -284,7 +289,9 @@ export default function GameSession({ onFinish, onExit, settings = { totalRounds
       setCustText('')
       setAgentText('')
       setShowRoundSummary(false)
+      setShowDocPanel(false)
       setStep('approach')
+      fetchBankState(sid).then(setBankState).catch(() => {})
     } catch (e) {
       setConnectionError(String(e?.message || e))
     } finally {
@@ -377,12 +384,12 @@ export default function GameSession({ onFinish, onExit, settings = { totalRounds
 
   // ── Display labels ────────────────────────────────────────────────────────
   const interactionLabel = isDemoPhase
-    ? 'DEMO — No Prompt'
+    ? 'Demo Round'
     : step === 'idle'
       ? isLoading ? 'Agent evaluating...' : 'Waiting...'
       : `Interaction ${liveNum} of ${settings.totalRounds}`
 
-  const custActive    = step === 'talking'
+  const custActive    = step !== 'idle' && step !== 'exit'
   const isResultPhase = step === 'result'
 
   let speakerName  = null
@@ -436,19 +443,6 @@ export default function GameSession({ onFinish, onExit, settings = { totalRounds
         </div>
       </div>
 
-      {/* ── Active prompt strip ───────────────────────────────────────────── */}
-      {isLivePhase && !connectionError && activePrompt && (
-        <div style={{
-          position: 'fixed', top: 52, left: 0, right: 0, zIndex: 200,
-          background: '#1a1a2e', borderBottom: '1px solid #2a2a4a',
-          padding: '5px 16px', display: 'flex', alignItems: 'center', gap: 8,
-        }}>
-          <span style={{ fontSize: 10, fontFamily: 'var(--teko)', color: '#4a9eff', letterSpacing: 1, whiteSpace: 'nowrap' }}>ACTIVE PROMPT</span>
-          <span style={{ fontSize: 11, color: '#aaa', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-            {activePrompt.slice(0, 120)}{activePrompt.length > 120 ? '…' : ''}
-          </span>
-        </div>
-      )}
 
       {/* ── Error banner ─────────────────────────────────────────────────── */}
       {isLivePhase && connectionError && (
@@ -465,13 +459,104 @@ export default function GameSession({ onFinish, onExit, settings = { totalRounds
       <div className="scene-stage">
         <img className="scene-bg-img" src={wallBg} alt="" />
         <div className="scene-vignette" />
-        {isDemoPhase && <div className="demo-badge">BASE AGENT — No System Prompt</div>}
+        {isDemoPhase && (
+          <div className="demo-badge" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, width: 'fit-content' }}>
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" style={{ width: 16, height: 16, flexShrink: 0 }}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9 3.75h.008v.008H12v-.008Z" />
+            </svg>
+            Base Model Interaction
+          </div>
+        )}
+        {/* ── Vault balance counter — top left of scene ── */}
+        {isLivePhase && bankState && (
+          <div
+            onClick={() => setShowBankTable(true)}
+            style={{
+              position: 'absolute', top: 14, left: 16, zIndex: 20,
+              background: 'rgba(18,10,4,0.82)', border: '1px solid #c8904a',
+              borderRadius: 6, padding: '7px 14px', cursor: 'pointer',
+              display: 'flex', flexDirection: 'column', gap: 2,
+            }}
+          >
+            <div style={{ fontSize: 13, fontFamily: 'var(--teko)', letterSpacing: 2, color: '#c8904a' }}>VAULT TOTAL</div>
+            <div style={{ fontSize: 32, fontFamily: 'var(--teko)', color: '#e8d5a0', letterSpacing: 1 }}>
+              ${bankState.total_balance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            </div>
+            <div style={{ fontSize: 11, color: '#666', fontFamily: 'var(--teko)', letterSpacing: 1 }}>CLICK TO VIEW ACCOUNTS</div>
+          </div>
+        )}
+
         <div className="pov-counter" />
         <div className="char-pov-anchor">
           <div className={`char-pov-inner ${step === 'approach' ? 'char-pov-approach' : step === 'exit' ? 'char-pov-leave' : ''}`}>
             {current && getCustomerPortrait(current.customer.emoji, custActive)}
           </div>
         </div>
+
+        {/* ── Doc panel — sits on the gold border, expands upward ── */}
+        {activeData && step !== 'idle' && step !== 'approach' && (
+          <div style={{
+            position: 'absolute', bottom: 68, right: '6%',
+            zIndex: 10, width: 260,
+            display: 'flex', flexDirection: 'column-reverse',
+          }}>
+            {/* Tab button — sits on top of the gold counter border */}
+            <button
+              onClick={() => setShowDocPanel(p => !p)}
+              style={{
+                background: '#2a1a08', border: '2px solid #c8904a',
+                borderTop: showDocPanel ? '1px solid #3a2a10' : '2px solid #c8904a',
+                color: 'var(--gold)', fontFamily: 'var(--teko)', fontSize: 18,
+                letterSpacing: 2, padding: '10px 14px', cursor: 'pointer',
+                textAlign: 'center', width: '100%',
+                boxSizing: 'border-box', flexShrink: 0,
+              }}
+            >
+              {showDocPanel ? '▼ CLOSE DOCUMENTS' : '▲ VIEW DOCUMENTS'}
+            </button>
+
+            {/* Panel content — expands upward above the tab */}
+            <div style={{
+              background: '#120e08', border: '2px solid #c8904a',
+              borderBottom: 'none', borderRadius: '8px 8px 0 0',
+              boxSizing: 'border-box', overflowY: 'auto',
+              maxHeight: showDocPanel ? 420 : 0,
+              transition: 'max-height 0.35s ease',
+              display: 'flex', flexDirection: 'column', gap: 16,
+              padding: showDocPanel ? '16px 14px' : '0 14px',
+            }}>
+              <div style={{ fontFamily: 'var(--teko)', fontSize: 19, letterSpacing: 2, color: 'var(--gold)', borderBottom: '1px solid #3a2a10', paddingBottom: 8 }}>
+                CUSTOMER FILE
+              </div>
+              <div>
+                <div style={{ fontSize: 13, color: '#666', fontFamily: 'var(--teko)', letterSpacing: 1, marginBottom: 4 }}>NAME</div>
+                <div style={{ fontSize: 24, color: '#e8d5a0' }}>{activeData.customer.name}</div>
+              </div>
+              <div>
+                <div style={{ fontSize: 13, color: '#666', fontFamily: 'var(--teko)', letterSpacing: 1, marginBottom: 6 }}>DOCUMENTS PRESENTED</div>
+                {activeData.customer.documents?.length > 0 ? (
+                  activeData.customer.documents.map((doc, i) => (
+                    <div key={i} style={{
+                      fontSize: 18, color: '#c8a040', fontFamily: 'var(--teko)', letterSpacing: 1,
+                      padding: '8px 12px', marginBottom: 5, borderRadius: 3,
+                      background: '#2a1a0033', border: '1px solid #3a2a10',
+                    }}>
+                      {doc.replace(/_/g, ' ').toUpperCase()}
+                    </div>
+                  ))
+                ) : (
+                  <div style={{ fontSize: 18, color: '#555', fontStyle: 'italic' }}>None presented</div>
+                )}
+              </div>
+              <div>
+                <div style={{ fontSize: 13, color: '#666', fontFamily: 'var(--teko)', letterSpacing: 1, marginBottom: 4 }}>REQUEST TYPE</div>
+                <div style={{ fontSize: 19, color: '#aaa', textTransform: 'capitalize' }}>
+                  {activeData.customer.request_type?.replace(/_/g, ' ')}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* ── Dialogue panel ───────────────────────────────────────────────── */}
@@ -551,6 +636,52 @@ export default function GameSession({ onFinish, onExit, settings = { totalRounds
             fetchNext()
           }}
         />
+      )}
+
+
+      {/* ── Bank accounts popup ──────────────────────────────────────────── */}
+      {showBankTable && bankState && (
+        <div className="exit-overlay" onClick={() => setShowBankTable(false)}>
+          <div className="exit-modal" style={{ maxWidth: 560, width: '90%' }} onClick={e => e.stopPropagation()}>
+            <h2 style={{ fontFamily: 'var(--teko)', letterSpacing: 2, marginBottom: 4, fontSize: 28 }}>BANK ACCOUNTS</h2>
+            <p style={{ fontSize: 15, color: '#888', margin: '0 0 16px' }}>
+              Total vault balance: <strong style={{ color: '#c8a040', fontSize: 17 }}>
+                ${bankState.total_balance.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+              </strong>
+            </p>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 16 }}>
+              <thead>
+                <tr style={{ borderBottom: '1px solid #3a2a10' }}>
+                  {['Account ID', 'Owner', 'Balance', 'Status'].map(h => (
+                    <th key={h} style={{ textAlign: 'left', padding: '8px 12px', fontFamily: 'var(--teko)', letterSpacing: 1, color: '#c8904a', fontSize: 15 }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {bankState.accounts.map(a => (
+                  <tr key={a.account_id} style={{ borderBottom: '1px solid #1a1008', opacity: a.is_closed ? 0.4 : 1 }}>
+                    <td style={{ padding: '9px 12px', color: '#888', fontFamily: 'var(--teko)', fontSize: 15 }}>{a.account_id}</td>
+                    <td style={{ padding: '9px 12px', color: '#8b5e3c', fontSize: 16 }}>{a.owner_name}</td>
+                    <td style={{ padding: '9px 12px', color: '#4caf50', fontFamily: 'var(--teko)', fontSize: 17 }}>
+                      ${a.balance.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                    </td>
+                    <td style={{ padding: '9px 12px' }}>
+                      <span style={{
+                        fontSize: 14, fontFamily: 'var(--teko)', letterSpacing: 1,
+                        color: a.is_closed ? '#888' : '#4caf50',
+                      }}>
+                        {a.is_closed ? 'CLOSED' : 'ACTIVE'}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <div className="exit-modal-actions" style={{ marginTop: 16 }}>
+              <button className="btn btn-settings" onClick={() => setShowBankTable(false)}>Close</button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* ── Exit confirmation ─────────────────────────────────────────────── */}

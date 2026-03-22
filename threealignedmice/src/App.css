@@ -641,19 +641,19 @@
 
 /* ── Top bar ─────────────────────────────────────────────── */
 .game-topbar {
-  flex-shrink: 0; z-index: 10;
+  flex-shrink: 0; z-index: 10; position: relative;
   background: linear-gradient(90deg, #1a0a02 0%, #3d1f08 50%, #1a0a02 100%);
   border-bottom: 3px solid var(--gold);
   padding: 8px 24px;
   display: flex; align-items: center; justify-content: space-between; gap: 16px;
 }
-.topbar-left  { display: flex; align-items: center; gap: 8px; }
+.topbar-left  { display: flex; align-items: center; gap: 8px; flex: 1; }
 .topbar-brand { font-family: var(--rye); font-size: 17px; color: var(--gold); letter-spacing: 3px; }
-.topbar-center { flex: 1; max-width: 360px; margin: 0 auto; display: flex; flex-direction: column; align-items: center; gap: 5px; }
+.topbar-center { flex: 0 0 auto; display: flex; flex-direction: column; align-items: center; gap: 5px; position: absolute; left: 50%; transform: translateX(-50%); }
 .interaction-counter { font-family: var(--rye); font-size: 16px; color: var(--parchment); letter-spacing: 2px; }
-.progress-track { width: 100%; height: 8px; background: rgba(255,255,255,0.12); border-radius: 4px; overflow: hidden; }
+.progress-track { width: 200px; height: 8px; background: rgba(255,255,255,0.12); border-radius: 4px; overflow: hidden; }
 .progress-fill  { height: 100%; background: var(--gold); border-radius: 4px; transition: width 0.6s ease; }
-.topbar-right { display: flex; align-items: center; gap: 10px; }
+.topbar-right { display: flex; align-items: center; gap: 10px; flex: 1; justify-content: flex-end; }
 .tier-badge {
   font-family: var(--rye); font-size: 11px; letter-spacing: 1px;
   padding: 5px 12px; border-radius: 12px; border: 2px solid; white-space: nowrap;
@@ -744,8 +744,7 @@
 .char-pov-approach { animation: povApproach 1.8s linear forwards; }
 .char-pov-leave    { animation: povLeave 0.6s ease-in forwards; }
 @keyframes povApproach {
-  0%   { transform: scale(0.15) translateY(0px);    opacity: 0; }
-  10%  { opacity: 1; }
+  0%   { transform: scale(0.15) translateY(0px); }
   18%  { transform: scale(0.28) translateY(-14px); }
   30%  { transform: scale(0.42) translateY(4px);   }
   42%  { transform: scale(0.57) translateY(-14px); }
@@ -753,7 +752,7 @@
   66%  { transform: scale(0.82) translateY(-11px); }
   78%  { transform: scale(0.92) translateY(3px);   }
   88%  { transform: scale(0.98) translateY(-6px);  }
-  100% { transform: scale(1)    translateY(0px);    opacity: 1; }
+  100% { transform: scale(1)    translateY(0px); }
 }
 @keyframes povLeave {
   from { transform: scale(1);    opacity: 1; }
@@ -802,7 +801,7 @@
 }
 .dp-text-ambient {
   font-family: var(--rye); font-size: 16px; letter-spacing: 3px;
-  color: rgba(90,48,16,0.5); font-style: normal; text-align: center; margin: 0;
+  color: var(--gold); font-style: normal; text-align: center; margin: 0;
 }
 .dp-action-chip {
   display: inline-block; align-self: flex-start;
