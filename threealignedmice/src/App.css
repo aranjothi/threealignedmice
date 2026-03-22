@@ -707,16 +707,71 @@
   font-family: var(--rye); font-size: 11px; letter-spacing: 1px;
   padding: 5px 12px; border-radius: 12px; border: 2px solid; white-space: nowrap;
 }
+.insight-btn {
+  background: rgba(74,110,180,0.18); border: 1px solid rgba(100,150,255,0.5);
+  color: #9bbfff; font-family: var(--teko); font-size: 15px; letter-spacing: 1px;
+  padding: 5px 14px; border-radius: 4px; cursor: pointer; transition: background 0.15s;
+  display: flex; align-items: center; gap: 6px;
+  animation: insight-pulse 2.5s ease-in-out infinite;
+}
+.insight-btn:hover { background: rgba(74,110,180,0.35); }
+@keyframes insight-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(100,150,255,0.0); }
+  50%       { box-shadow: 0 0 0 5px rgba(100,150,255,0.25); }
+}
+
+.insight-overlay {
+  position: absolute; inset: 0; z-index: 200;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(10,4,0,0.55); backdrop-filter: blur(2px);
+}
+.insight-panel {
+  background: var(--parchment);
+  border: 2px solid #6a8fd8;
+  border-radius: 6px;
+  max-width: 420px; width: 90%;
+  padding: 0;
+  display: flex; flex-direction: column;
+  box-shadow: 0 12px 48px rgba(0,0,0,0.6);
+  overflow: hidden;
+}
+.insight-header {
+  background: linear-gradient(135deg, #1a2a4a, #2a3a6a);
+  padding: 16px 20px 14px;
+  border-bottom: 2px solid #6a8fd8;
+}
+.insight-concept {
+  font-family: var(--teko); font-size: 11px; letter-spacing: 4px;
+  color: #9bbfff; text-transform: uppercase; margin-bottom: 4px;
+}
+.insight-title {
+  font-family: var(--rye); font-size: 20px; color: #e8d8b0; letter-spacing: 2px;
+}
+.insight-body {
+  padding: 20px 20px 8px; font-size: 17px; line-height: 1.75;
+  color: #3a2010; margin: 0;
+}
+
 .pause-btn {
   background: rgba(255,216,122,0.12); border: 1px solid rgba(245,216,122,0.5);
   color: var(--gold-lt); font-family: var(--teko); font-size: 15px; letter-spacing: 1px;
   padding: 5px 14px; border-radius: 4px; cursor: pointer; transition: background 0.15s;
+  display: flex; align-items: center; gap: 6px;
 }
 .pause-btn:hover { background: rgba(255,216,122,0.22); }
+.skip-btn {
+  background: rgba(255,255,255,0.12); border: 1px solid rgba(255,255,255,0.4);
+  color: #fff; font-family: var(--teko); font-size: 15px; letter-spacing: 1px;
+  padding: 5px 14px; border-radius: 4px; cursor: pointer; transition: background 0.15s;
+  display: flex; align-items: center; gap: 6px;
+}
+.skip-btn:hover { background: rgba(255,255,255,0.22); }
+.pause-btn span, .insight-btn span, .exit-btn span, .skip-btn span { padding-top: 3px; }
 .exit-btn {
   background: rgba(139,32,32,0.15); border: 1px solid rgba(180,60,60,0.5);
   color: #e08080; font-family: var(--teko); font-size: 15px; letter-spacing: 1px;
   padding: 5px 14px; border-radius: 4px; cursor: pointer; transition: background 0.15s;
+  display: flex; align-items: center; gap: 6px;
 }
 .exit-btn:hover { background: rgba(139,32,32,0.3); }
 
@@ -949,6 +1004,39 @@
 .pe-deploy-btn { font-size: 19px; padding: 14px 32px; width: auto; }
 .pe-hint { font-family: var(--teko); font-size: 14px; color: var(--brown); opacity: 0.7; }
 
+/* ── Objective splash ────────────────────────────────────── */
+@keyframes objective-content-fade {
+  0%   { opacity: 0; }
+  20%  { opacity: 1; }
+  75%  { opacity: 1; }
+  100% { opacity: 0; }
+}
+.objective-screen {
+  position: absolute; inset: 0; z-index: 200;
+  background: #3b1f0a;
+  display: flex; align-items: center; justify-content: center;
+  pointer-events: none;
+}
+.objective-content {
+  display: flex; flex-direction: column; align-items: center; gap: 16px;
+  text-align: center; padding: 0 40px;
+  animation: objective-content-fade 5.5s ease forwards;
+}
+.objective-title {
+  font-family: var(--rye);
+  font-size: 56px;
+  color: #fff;
+  margin: 0;
+  letter-spacing: 2px;
+}
+.objective-sub {
+  font-size: 25px;
+  color: rgba(255,255,255,0.75);
+  margin: 0;
+  max-width: 340px;
+  line-height: 1.5;
+}
+
 /* ── Done overlay ────────────────────────────────────────── */
 .done-overlay {
   position: absolute; inset: 0; z-index: 50; background: rgba(26,14,5,0.88);
@@ -966,6 +1054,16 @@
 
 .cursor { animation: blink 0.7s step-end infinite; }
 @keyframes blink { 0%,100% { opacity: 1; } 50% { opacity: 0; } }
+
+@keyframes stamp {
+  0%   { opacity: 0; transform: scale(2.2); filter: blur(4px); }
+  55%  { opacity: 1; transform: scale(0.92); filter: blur(0); }
+  75%  { transform: scale(1.04); }
+  100% { transform: scale(1); }
+}
+.action-stamp {
+  animation: stamp 0.8s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
 
 .next-btn {
   position: absolute; bottom: 16px; right: 20px;
@@ -1060,6 +1158,81 @@
   margin-top: auto;
 }
 .sc-actions .btn { width: 200px; }
+
+/* ── Alignment concept cards ─────────────────────────────────────────────── */
+.sc-concepts {
+  padding: 0 32px 8px;
+}
+.sc-concepts-intro {
+  font-size: 13px;
+  color: #888;
+  margin: 6px 0 14px;
+  line-height: 1.5;
+}
+.sc-concept-card {
+  background: #120e08;
+  border: 1px solid #3a2a10;
+  border-radius: 6px;
+  padding: 14px 16px;
+  margin-bottom: 10px;
+  cursor: pointer;
+  transition: border-color 0.2s;
+}
+.sc-concept-card:hover {
+  border-color: #c8904a;
+}
+.sc-concept-top {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+.sc-concept-emoji {
+  font-size: 22px;
+  flex-shrink: 0;
+  line-height: 1;
+  margin-top: 2px;
+}
+.sc-concept-header {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.sc-concept-pill {
+  font-family: var(--teko);
+  font-size: 11px;
+  letter-spacing: 2px;
+  color: #c8904a;
+  text-transform: uppercase;
+}
+.sc-concept-name {
+  font-family: var(--teko);
+  font-size: 20px;
+  letter-spacing: 1px;
+  color: #e8d5a0;
+  line-height: 1.1;
+}
+.sc-concept-chevron {
+  font-size: 11px;
+  color: #666;
+  flex-shrink: 0;
+  margin-top: 4px;
+}
+.sc-concept-summary {
+  font-size: 13px;
+  color: #8b6a3a;
+  margin: 8px 0 0 34px;
+  line-height: 1.5;
+  font-style: italic;
+}
+.sc-concept-body {
+  font-size: 14px;
+  color: #ccc;
+  margin: 10px 0 0 34px;
+  line-height: 1.65;
+  border-top: 1px solid #2a1e0e;
+  padding-top: 10px;
+}
 
 /* Background layers stay behind the card */
 .scorecard-screen .sky,

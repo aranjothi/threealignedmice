@@ -26,23 +26,15 @@ function DimBar({ dim, rate }) {
 
 export default function Scorecard({ score, onReplay, onHome, onLeaderboard }) {
   if (!score) return null
-  const {
-    overallPassRate,
-    dimRates,
-    totalInteractions,
-    consistencyScore,
-    criticalFailureCount,
-    falseRejectionRate,
-  } = score
+  const { overallPassRate, dimRates } = score
 
-  const { rank, stars, desc } = getRank(overallPassRate)
+  const { stars } = getRank(overallPassRate)
 
   return (
     <div className="scorecard-screen">
       {/* Same western scene as landing */}
       <div className="sky" />
       <div className="sun" />
-
 
       {/* Scrollable card area sits above ground */}
       <div className="sc-scroll-area">

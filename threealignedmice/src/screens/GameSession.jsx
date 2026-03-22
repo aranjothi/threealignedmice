@@ -2,9 +2,12 @@ import { useState, useEffect, useRef, useMemo } from 'react'
 import wallBg from '../assets/wall.jpg'
 import wantedPoster from '../assets/wanted_poster.svg'
 import { DIMENSION_LABELS } from '../data/interactions'
+import { getInsight as _getInsight } from '../data/insights'
 import { getCustomerPortrait } from './Characters'
 import { createSession, runNext, fetchBankState, revertOverdrafts } from '../api'
 
+
+const getInsight = _getInsight
 
 const STEP_ORDER  = ['approach', 'talking', 'responding', 'result', 'exit']
 const STEP_DELAYS = { approach: 1800, result: 5000, exit: 700 }
@@ -46,7 +49,7 @@ function PromptEditor({ onDeploy, isLoading, error }) {
     <div className="pe-overlay">
       <div className="pe-card">
         <div className="pe-header">
-          <h2>The Agent Needs Your Guidance</h2>
+          <h2>Intermission — Prompt Edits</h2>
         </div>
         <div className="pe-prompt-area">
           <div className="pe-section-label">YOUR SYSTEM PROMPT</div>
@@ -62,7 +65,7 @@ function PromptEditor({ onDeploy, isLoading, error }) {
         {error && <p style={{ color: '#c04040', margin: '0 0 8px', fontSize: 13 }}>{error}</p>}
         <div className="pe-footer">
           <button className="btn btn-play pe-deploy-btn" disabled={isLoading} onClick={() => onDeploy(prompt)}>
-            {isLoading ? 'Connecting...' : 'Deploy Prompt & Run Evaluation'}
+            {isLoading ? 'Processing...' : 'Submit Changes'}
           </button>
         </div>
       </div>
@@ -186,9 +189,26 @@ function BetweenRound({ currentPrompt, interactionNum, total, lastData, onContin
 }
 
 
+// ─── Objective splash ─────────────────────────────────────────────────────────
+function ObjectiveSplash({ onDone }) {
+  useEffect(() => {
+    const t = setTimeout(onDone, 3500)
+    return () => clearTimeout(t)
+  }, [onDone])
+
+  return (
+    <div className="objective-screen">
+      <div className="objective-content">
+        <h1 className="objective-title">Objective</h1>
+        <p className="objective-sub">Aim to steer your agent to accurately assist customers</p>
+      </div>
+    </div>
+  )
+}
+
 // ─── Main component ───────────────────────────────────────────────────────────
 export default function GameSession({ onFinish, onExit, settings = { totalRounds: 20, promptEditEvery: 1 } }) {
-  const [gamePhase, setGamePhase] = useState('demo')   // demo | prompt_edit | live | complete
+  const [gamePhase, setGamePhase] = useState('objective')   // objective | demo | prompt_edit | live | complete
   const [step, setStep]           = useState('idle')   // idle | approach | talking | responding | result | exit
   const [paused, setPaused]       = useState(false)
   const [custText, setCustText]   = useState('')
@@ -197,6 +217,7 @@ export default function GameSession({ onFinish, onExit, settings = { totalRounds
   const [showRoundSummary, setShowRoundSummary] = useState(false)
   const [showDocPanel, setShowDocPanel]         = useState(false)
   const [bankState, setBankState]               = useState(null)
+  const [showInsight, setShowInsight]           = useState(false)
   const [showBankTable, setShowBankTable]       = useState(false)
 
   // Demo phase — real API call, no user prompt
@@ -387,7 +408,7 @@ export default function GameSession({ onFinish, onExit, settings = { totalRounds
   const interactionLabel = isDemoPhase
     ? 'Demo Round'
     : step === 'idle'
-      ? isLoading ? 'Agent evaluating...' : 'Waiting...'
+      ? isLoading ? 'Interacting...' : 'Waiting...'
       : `Interaction ${liveNum} of ${settings.totalRounds}`
 
   const custActive    = step !== 'idle' && step !== 'exit'
@@ -398,8 +419,8 @@ export default function GameSession({ onFinish, onExit, settings = { totalRounds
 
   if (step === 'idle') {
     dialogueLine = isDemoPhase
-      ? 'Preparing demonstration...'
-      : isLoading ? 'Agent is evaluating the next customer...' : 'Waiting for next customer...'
+      ? 'Preparing demo round...'
+      : isLoading ? 'Evaluating next customer interaction...' : 'Waiting for next customer...'
   } else if (step === 'approach') {
     dialogueLine = 'A customer approaches the counter...'
   } else if (step === 'talking') {
@@ -427,19 +448,39 @@ export default function GameSession({ onFinish, onExit, settings = { totalRounds
           )}
         </div>
         <div className="topbar-right">
+          {activeData && getInsight(activeData.customer?.tactic, activeData.action) && (
+            <button className="insight-btn" onClick={() => setShowInsight(true)}>
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 22" strokeWidth={1.5} stroke="currentColor" style={{ width: 16, height: 20 }}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z" />
+              </svg>
+              <span>Alignment Insight</span>
+            </button>
+          )}
           {isDemoPhase && (
-            <button className="pause-btn" onClick={() => { demoCancelRef.current?.(); setGamePhase('prompt_edit') }}>
-              Skip Demo
+            <button className="skip-btn" onClick={() => { demoCancelRef.current?.(); setGamePhase('prompt_edit') }}>
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" style={{ width: 16, height: 16 }}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M3 8.689c0-.864.933-1.406 1.683-.977l7.108 4.061a1.125 1.125 0 0 1 0 1.954l-7.108 4.061A1.125 1.125 0 0 1 3 16.811V8.69ZM12.75 8.689c0-.864.933-1.406 1.683-.977l7.108 4.061a1.125 1.125 0 0 1 0 1.954l-7.108 4.061a1.125 1.125 0 0 1-1.683-.977V8.69Z" />
+              </svg>
+              <span>Skip Demo</span>
             </button>
           )}
           <button className="pause-btn" onClick={() => setPaused(p => !p)}>
-            {paused ? '▶ Resume' : '⏸ Pause'}
+            {paused ? (
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 25" strokeWidth={1.5} stroke="currentColor" style={{ width: 16, height: 16 }}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.347a1.125 1.125 0 0 1 0 1.972l-11.54 6.347a1.125 1.125 0 0 1-1.667-.986V5.653Z" />
+              </svg>
+            ) : (
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 22" strokeWidth={1.5} stroke="currentColor" style={{ width: 16, height: 16 }}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 5.25v13.5m-7.5-13.5v13.5" />
+              </svg>
+            )}
+            <span>{paused ? 'Resume' : 'Pause'}</span>
           </button>
           <button className="exit-btn" onClick={() => setExitConfirm(true)}>
-            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" style={{ width: 16, height: 16, marginRight: 6, verticalAlign: 'middle' }}>
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" style={{ width: 16, height: 16 }}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 9V5.25A2.25 2.25 0 0 1 10.5 3h6a2.25 2.25 0 0 1 2.25 2.25v13.5A2.25 2.25 0 0 1 16.5 21h-6a2.25 2.25 0 0 1-2.25-2.25V15M12 9l3 3m0 0-3 3m3-3H2.25" />
             </svg>
-            Exit
+            <span>Exit</span>
           </button>
         </div>
       </div>
@@ -589,9 +630,9 @@ export default function GameSession({ onFinish, onExit, settings = { totalRounds
 
         {isResultPhase && currentAgent && (
           <>
-            <p className="dp-text dp-text-ambient">
-              Action Taken:&nbsp;
-              <span style={{ color: currentAgent.actionColor, fontFamily: 'var(--teko)', letterSpacing: 1, fontSize: '1.4em' }}>
+            <p className="dp-text dp-text-ambient action-stamp">
+              <span style={{ fontFamily: 'var(--rye)', letterSpacing: 3, fontSize: '1.25em', color: 'var(--gold)' }}>Action Taken:&nbsp;</span>
+              <span style={{ color: currentAgent.actionColor, fontFamily: 'var(--rye)', letterSpacing: 3, fontSize: '1.25em' }}>
                 {currentAgent.actionLabel}
               </span>
             </p>
@@ -690,6 +731,26 @@ export default function GameSession({ onFinish, onExit, settings = { totalRounds
         </div>
       )}
 
+      {/* ── Alignment insight panel ───────────────────────────────────────── */}
+      {showInsight && activeData && (() => {
+        const insight = getInsight(activeData.customer?.tactic, activeData.action)
+        if (!insight) return null
+        return (
+          <div className="insight-overlay" onClick={() => setShowInsight(false)}>
+            <div className="insight-panel" onClick={e => e.stopPropagation()}>
+              <div className="insight-header">
+                <div className="insight-concept">{insight.concept}</div>
+                <div className="insight-title">Alignment Insight</div>
+              </div>
+              <p className="insight-body">{insight.text}</p>
+              <button className="btn btn-play" style={{ alignSelf: 'center', marginTop: 8, marginBottom: 20, padding: '6px 28px', fontSize: 14 }} onClick={() => setShowInsight(false)}>
+                Got it
+              </button>
+            </div>
+          </div>
+        )
+      })()}
+
       {/* ── Exit confirmation ─────────────────────────────────────────────── */}
       {exitConfirm && (
         <div className="exit-overlay">
@@ -702,6 +763,11 @@ export default function GameSession({ onFinish, onExit, settings = { totalRounds
             </div>
           </div>
         </div>
+      )}
+
+      {/* ── Objective splash ─────────────────────────────────────────────── */}
+      {gamePhase === 'objective' && (
+        <ObjectiveSplash onDone={() => setGamePhase('demo')} />
       )}
 
       {/* ── Complete overlay ──────────────────────────────────────────────── */}

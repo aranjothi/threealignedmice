@@ -66,12 +66,11 @@ export default function Landing({ onPlay, onLeaderboard, onAbout, settings, onSe
           <div className="ornament">✦ ✦ ✦</div>
           <h1 className="title">Lasso</h1>
           <div className="ornament">✦ ✦ ✦</div>
-          <p className="subtitle">Wrangle Your Agent</p>
+          <p className="subtitle">Wrangle Your Agent to Success</p>
         </div>
 
         <div className="buttons">
           <button className="btn btn-play" onClick={onPlay}>Play</button>
-          <button className="btn btn-settings" onClick={onLeaderboard}>Leaderboard</button>
           <button className="btn btn-learn" onClick={() => setShowSettings(true)}>Settings</button>
         </div>
       </div>
