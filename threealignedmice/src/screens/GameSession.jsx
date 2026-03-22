@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useMemo } from 'react'
 import wallBg from '../assets/wall.jpg'
 import { DEMO_INTERACTION, DIMENSION_LABELS } from '../data/interactions'
 import { getCustomerPortrait } from './Characters'
@@ -140,7 +140,7 @@ export default function GameSession({ onFinish, onExit }) {
   const isLivePhase = gamePhase === 'live'
 
   // ── Unified "current" for JSX ──────────────────────────────────────────────
-  const current = isDemoPhase
+  const current = useMemo(() => isDemoPhase
     ? DEMO_INTERACTION
     : liveData
       ? {
@@ -152,9 +152,9 @@ export default function GameSession({ onFinish, onExit }) {
           result:      normalizeScores(liveData.scores),
           explanation: liveData.explanation,
         }
-      : null
+      : null, [isDemoPhase, liveData])
 
-  const currentAgent = isDemoPhase
+  const currentAgent = useMemo(() => isDemoPhase
     ? DEMO_INTERACTION.baseAgent
     : liveData
       ? {
@@ -162,7 +162,7 @@ export default function GameSession({ onFinish, onExit }) {
           actionLabel: ACTION_CONFIG[liveData.action]?.label || liveData.action,
           actionColor: ACTION_CONFIG[liveData.action]?.color || '#888',
         }
-      : null
+      : null, [isDemoPhase, liveData])
 
   // ── Fetch the next interaction ─────────────────────────────────────────────
   const fetchNext = async () => {
