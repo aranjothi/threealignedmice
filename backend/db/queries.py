@@ -1,7 +1,7 @@
 import json
 import uuid
 from datetime import datetime
-from db.connection import execute, fetchall, fetchone
+from db.connection import execute, fetchall, fetchone, get_backend
 
 
 # ─── Sessions ────────────────────────────────────────────────────────────────
@@ -135,13 +135,19 @@ def get_bank_policy(session_id: str, topic: str) -> str | None:
 
 
 def update_bank_policy(session_id: str, topic: str, new_policy: str):
-    execute(
-        "MERGE INTO BANK_POLICIES USING (SELECT %s AS session_id, %s AS topic, %s AS policy_text) src "
-        "ON BANK_POLICIES.session_id = src.session_id AND BANK_POLICIES.topic = src.topic "
-        "WHEN MATCHED THEN UPDATE SET policy_text = src.policy_text, modified_at = CURRENT_TIMESTAMP() "
-        "WHEN NOT MATCHED THEN INSERT (session_id, topic, policy_text) VALUES (src.session_id, src.topic, src.policy_text)",
-        (session_id, topic, new_policy),
-    )
+    if get_backend() == 'snowflake':
+        execute(
+            "MERGE INTO BANK_POLICIES USING (SELECT %s AS session_id, %s AS topic, %s AS policy_text) src "
+            "ON BANK_POLICIES.session_id = src.session_id AND BANK_POLICIES.topic = src.topic "
+            "WHEN MATCHED THEN UPDATE SET policy_text = src.policy_text, modified_at = CURRENT_TIMESTAMP() "
+            "WHEN NOT MATCHED THEN INSERT (session_id, topic, policy_text) VALUES (src.session_id, src.topic, src.policy_text)",
+            (session_id, topic, new_policy),
+        )
+    else:
+        execute(
+            "INSERT OR REPLACE INTO BANK_POLICIES (session_id, topic, policy_text) VALUES (%s, %s, %s)",
+            (session_id, topic, new_policy),
+        )
 
 
 # ─── Interaction Log ──────────────────────────────────────────────────────────
@@ -156,25 +162,26 @@ def log_interaction(
     agent_response: str,
     agent_reasoning: str,
 ):
-    execute(
-        """INSERT INTO INTERACTION_LOG
-           (session_id, interaction_num, tier, customer_name, customer_type, dialogue,
-            documents, action_called, action_params, agent_response, agent_reasoning)
-           SELECT %s, %s, %s, %s, %s, %s, PARSE_JSON(%s), %s, PARSE_JSON(%s), %s, %s""",
-        (
-            session_id,
-            interaction_num,
-            tier,
-            customer.get("name"),
-            customer.get("type"),
-            customer.get("dialogue"),
-            json.dumps(customer.get("documents", [])),
-            action_called,
-            json.dumps(action_params or {}),
-            agent_response,
-            agent_reasoning,
-        ),
-    )
+    docs_json = json.dumps(customer.get("documents", []))
+    params_json = json.dumps(action_params or {})
+    if get_backend() == 'snowflake':
+        execute(
+            """INSERT INTO INTERACTION_LOG
+               (session_id, interaction_num, tier, customer_name, customer_type, dialogue,
+                documents, action_called, action_params, agent_response, agent_reasoning)
+               SELECT %s, %s, %s, %s, %s, %s, PARSE_JSON(%s), %s, PARSE_JSON(%s), %s, %s""",
+            (session_id, interaction_num, tier, customer.get("name"), customer.get("type"),
+             customer.get("dialogue"), docs_json, action_called, params_json, agent_response, agent_reasoning),
+        )
+    else:
+        execute(
+            """INSERT INTO INTERACTION_LOG
+               (session_id, interaction_num, tier, customer_name, customer_type, dialogue,
+                documents, action_called, action_params, agent_response, agent_reasoning)
+               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
+            (session_id, interaction_num, tier, customer.get("name"), customer.get("type"),
+             customer.get("dialogue"), docs_json, action_called, params_json, agent_response, agent_reasoning),
+        )
 
 
 def get_interactions(session_id: str) -> list[dict]:
