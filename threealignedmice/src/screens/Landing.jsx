@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import tumbleweedImg from '../assets/tumbleweed.png'
 
 function SettingsModal({ settings, onChange, onClose }) {
   const [local, setLocal] = useState(settings)
@@ -94,7 +95,7 @@ export default function Landing({ onPlay, onLeaderboard, onAbout, settings, onSe
           <div className="cactus-arm arm-left" />
           <div className="cactus-arm arm-right" />
         </div>
-        <div className="tumbleweed" />
+        <img src={tumbleweedImg} className="tumbleweed" alt="" />
       </div>
     </div>
   )

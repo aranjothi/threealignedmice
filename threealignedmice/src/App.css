@@ -189,20 +189,23 @@
 .arm-right::after { right: 2px; border-radius: 50% 50% 50% 0; }
 
 .tumbleweed {
-  position: absolute; bottom: 55px; width: 36px; height: 36px;
-  border-radius: 50%;
-  background: radial-gradient(circle at 40% 40%, #c8a06a, #8b5e2a);
-  border: 2px solid #6b4010; opacity: 0.7;
-  animation: tumble 9s linear infinite;
+  position: absolute; bottom: 55px; width: 60px; height: 60px;
+  object-fit: contain;
+  animation: tumble-x 9s linear infinite, tumble-y 0.6s ease-in-out infinite alternate, tumble-spin 9s linear infinite;
 }
-.tumbleweed::before, .tumbleweed::after { content: ''; position: absolute; inset: 4px; border-radius: 50%; border: 1px solid rgba(80,40,10,0.4); }
-.tumbleweed::before { transform: rotate(45deg) scaleX(0.3); }
-.tumbleweed::after  { transform: rotate(-45deg) scaleX(0.3); }
-@keyframes tumble {
-  0%   { left: -60px; transform: rotate(0deg); opacity: 0; }
-  10%  { opacity: 0.7; }
-  90%  { opacity: 0.7; }
-  100% { left: 110%; transform: rotate(720deg); opacity: 0; }
+@keyframes tumble-x {
+  0%   { left: -60px; opacity: 0; }
+  10%  { opacity: 0.85; }
+  90%  { opacity: 0.85; }
+  100% { left: 110%; opacity: 0; }
+}
+@keyframes tumble-y {
+  0%   { bottom: 55px; }
+  100% { bottom: 100px; }
+}
+@keyframes tumble-spin {
+  0%   { transform: rotate(0deg); }
+  100% { transform: rotate(1800deg); }
 }
 
 /* ═══════════════════════════════════════════════════════════
