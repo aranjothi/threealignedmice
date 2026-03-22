@@ -15,7 +15,7 @@ const NAME_PORTRAIT = {
   'Dolores Finch':               womanSaloonSinger,
   'Clarence Mott':               maleSaloonKeeper,
   'Rosa Tillman':                womanSaloonSinger,
-  'Nelly Croft':                 womanSaloonSinger,
+  'Dolores Vane':                womanSaloonSinger,
 
   'Sheriff Weston Cray':         maleSheriff,
   'Attorney Lucius Pemberton':   maleSaloonKeeper,

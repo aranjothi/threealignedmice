@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useMemo } from 'react'
 import wallBg from '../assets/wall.jpg'
 import { DIMENSION_LABELS } from '../data/interactions'
 import { getCustomerPortrait } from './Characters'
-import { createSession, runNext, fetchBankState } from '../api'
+import { createSession, runNext, fetchBankState, revertOverdrafts } from '../api'
 
 
 const STEP_ORDER  = ['approach', 'talking', 'responding', 'result', 'exit']
@@ -230,7 +230,10 @@ export default function GameSession({ onFinish, onExit, settings = { totalRounds
       try {
         const { session_id } = await createSession({ prompt: '' })
         demoSessionRef.current = session_id
-        const data = await runNext(session_id, '')
+        const [data] = await Promise.all([
+          runNext(session_id, ''),
+          fetchBankState(session_id).then(setBankState).catch(() => {}),
+        ])
         if (!cancelled) {
           setDemoData(data)
           setStep('approach')
@@ -284,7 +287,6 @@ export default function GameSession({ onFinish, onExit, settings = { totalRounds
       setShowRoundSummary(false)
       setShowDocPanel(false)
       setStep('approach')
-      fetchBankState(sid).then(setBankState).catch(() => {})
     } catch (e) {
       setConnectionError(String(e?.message || e))
     } finally {
@@ -301,10 +303,12 @@ export default function GameSession({ onFinish, onExit, settings = { totalRounds
     try {
       const { session_id } = await createSession({ prompt, totalRounds: settings.totalRounds })
       sessionIdRef.current = session_id
-      setGamePhase('live')
-      setStep('idle')
-      setLiveNum(0)
       setLiveData(null)
+      setLiveNum(0)
+      setStep('idle')
+      setGamePhase('live')
+      // Small delay so the live phase visually starts fresh before the first customer walks in
+      await new Promise(r => setTimeout(r, 400))
       fetchNext()
     } catch {
       setConnectionError('Could not connect to evaluation server. Is the backend running?')
@@ -372,8 +376,12 @@ export default function GameSession({ onFinish, onExit, settings = { totalRounds
   // talking → responding (show agent's verbal reply)
   const handleNext = () => setStep('responding')
 
-  // responding → result (reveal what action was taken)
-  const handleSeeAction = () => setStep('result')
+  // responding → result (reveal what action was taken + update bank state)
+  const handleSeeAction = () => {
+    setStep('result')
+    const sid = sessionIdRef.current || demoSessionRef.current
+    if (sid) fetchBankState(sid).then(setBankState).catch(() => {})
+  }
 
   // ── Display labels ────────────────────────────────────────────────────────
   const interactionLabel = isDemoPhase
@@ -461,7 +469,7 @@ export default function GameSession({ onFinish, onExit, settings = { totalRounds
           </div>
         )}
         {/* ── Vault balance counter — top left of scene ── */}
-        {isLivePhase && bankState && (
+        {(isLivePhase || isDemoPhase) && bankState && (
           <div
             onClick={() => setShowBankTable(true)}
             style={{
@@ -482,7 +490,7 @@ export default function GameSession({ onFinish, onExit, settings = { totalRounds
         <div className="pov-counter" />
         <div className="char-pov-anchor">
           <div className={`char-pov-inner ${step === 'approach' ? 'char-pov-approach' : step === 'exit' ? 'char-pov-leave' : ''}`}>
-            {current && getCustomerPortrait(current.customer.name, current.customer.gender, custActive)}
+            {current && step !== 'idle' && getCustomerPortrait(current.customer.name, current.customer.gender, custActive)}
           </div>
         </div>
 
@@ -581,8 +589,8 @@ export default function GameSession({ onFinish, onExit, settings = { totalRounds
         {isResultPhase && currentAgent && (
           <>
             <p className="dp-text dp-text-ambient">
-              Action taken:&nbsp;
-              <span style={{ color: currentAgent.actionColor, fontFamily: 'var(--teko)', letterSpacing: 1 }}>
+              Action Taken:&nbsp;
+              <span style={{ color: currentAgent.actionColor, fontFamily: 'var(--teko)', letterSpacing: 1, fontSize: '1.4em' }}>
                 {currentAgent.actionLabel}
               </span>
             </p>
@@ -608,6 +616,10 @@ export default function GameSession({ onFinish, onExit, settings = { totalRounds
           activeData={activeData}
           onContinue={() => {
             setShowRoundSummary(false)
+            const sid = sessionIdRef.current || demoSessionRef.current
+            if (sid) {
+              revertOverdrafts(sid).then(setBankState).catch(() => {})
+            }
             setStep('exit')
           }}
         />

@@ -1,7 +1,6 @@
 import uuid
 import asyncio
 import time
-import random
 from typing import AsyncGenerator
 
 from dotenv import load_dotenv
@@ -62,8 +61,9 @@ class RunNextRequest(BaseModel):
 
 @app.post("/sessions", response_model=CreateSessionResponse)
 def create_session(body: CreateSessionRequest):
+    import random
     session_id = str(uuid.uuid4())
-    seed = body.seed if body.seed is not None else random.randint(1, 1000000)
+    seed = body.seed if body.seed is not None else random.randint(1, 10_000_000)
     queries.create_session(session_id, body.prompt, seed, body.team_name)
     _totals[session_id] = max(1, body.total_rounds)
     return CreateSessionResponse(session_id=session_id, seed=seed)
@@ -362,6 +362,29 @@ def get_scorecard(session_id: str):
         for s in scores
     ]
     return compute_scorecard(all_scores, session_id)
+
+
+@app.post("/sessions/{session_id}/revert-overdrafts")
+def revert_overdrafts(session_id: str):
+    session = queries.get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+    bank = Bank(session_id)
+    bank.revert_overdrafts()
+    accounts = queries.get_all_accounts(session_id)
+    total = round(sum(a["BALANCE"] for a in accounts if not a.get("IS_CLOSED")), 2)
+    return {
+        "total_balance": total,
+        "accounts": [
+            {
+                "account_id": a["ACCOUNT_ID"],
+                "owner_name": a["OWNER_NAME"],
+                "balance": a["BALANCE"],
+                "is_closed": bool(a.get("IS_CLOSED", False)),
+            }
+            for a in accounts
+        ],
+    }
 
 
 @app.get("/sessions/{session_id}/bank")

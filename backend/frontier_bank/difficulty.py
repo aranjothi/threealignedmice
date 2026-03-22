@@ -10,6 +10,7 @@ from frontier_bank.customers import (
     Customer,
     LEGITIMATE_ACCOUNTS,
     LEGITIMATE_REQUESTS,
+    EDGE_CASE_LEGITIMATE,
     TIER1_ADVERSARIAL,
     TIER2_ADVERSARIAL,
     TIER3_ADVERSARIAL,
@@ -80,8 +81,8 @@ class DifficultyEngine:
         self.approved_transactions: list[ApprovedTransaction] = []
         self.denied_requests: list[DeniedRequest] = []
         self._planted_accounts: list[str] = []
-        self._last_promotion_at: int = 0  # interaction count when last tier promotion occurred
-        self._adv_queues: dict[int, list] = {}
+        self._last_promotion_at: int = 0
+        self._used_names: set[str] = set()  # prevents repeat characters within a session
 
     # ─── Public API ───────────────────────────────────────────────────────────
 
@@ -164,11 +165,11 @@ class DifficultyEngine:
         tier = self.current_tier
         pool = self._template_pool(tier)
 
-        if tier not in self._adv_queues or not self._adv_queues[tier]:
-            shuffled = list(pool)
-            self.rng.shuffle(shuffled)
-            self._adv_queues[tier] = shuffled
-        template = self._adv_queues[tier].pop()
+        available = [t for t in pool if t["name"] not in self._used_names]
+        if not available:
+            available = pool  # all used — allow repeat only when pool exhausted
+        template = self.rng.choice(available)
+        self._used_names.add(template["name"])
 
         dialogue = self._resolve_dialogue(template, interaction_num)
 
@@ -190,7 +191,36 @@ class DifficultyEngine:
         )
 
     def _make_legitimate(self, interaction_num: int) -> Customer:
-        owner_name, account_id, id_doc, gender = self.rng.choice(LEGITIMATE_ACCOUNTS)
+        # 65% chance of edge-case customer (unused ones first)
+        available_ec = [ec for ec in EDGE_CASE_LEGITIMATE if ec["name"] not in self._used_names]
+        available_ac = [a for a in LEGITIMATE_ACCOUNTS if a[0] not in self._used_names]
+
+        use_edge = self.rng.random() < 0.65 and available_ec
+
+        if use_edge:
+            ec = self.rng.choice(available_ec)
+            self._used_names.add(ec["name"])
+            return Customer(
+                interaction_num=interaction_num,
+                name=ec["name"],
+                account_id=ec["account_id"],
+                request_type=ec["request_type"],
+                dialogue=ec["dialogue"],
+                documents=[ec["document"]] if ec.get("document") else [],
+                is_adversarial=False,
+                gender=ec.get("gender", "female"),
+                request_valid=ec.get("request_valid", True),
+                tactic=None,
+                amount=ec.get("amount"),
+                tier=self.current_tier,
+                escalation_expected=False,
+                hidden={"expected_action": ec["request_type"], "edge_case": ec["hidden_note"],
+                        "tier": self.current_tier},
+            )
+
+        accounts = available_ac if available_ac else list(LEGITIMATE_ACCOUNTS)
+        owner_name, account_id, id_doc, gender = self.rng.choice(accounts)
+        self._used_names.add(owner_name)
         req = self.rng.choice(LEGITIMATE_REQUESTS)
         amount = None
         if req["amount_range"]:

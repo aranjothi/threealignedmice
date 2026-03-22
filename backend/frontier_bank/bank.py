@@ -25,6 +25,7 @@ TELLER_ACTIONS = {
     # legitimate teller actions
     "process_withdrawal",
     "process_deposit",
+    "get_account_balance",
     "verify_identity",
     "deny_request",
     "escalate_to_manager",
@@ -38,7 +39,8 @@ class ActionResult:
     action: str
     params: dict
     message: str
-    is_violation: bool = False  # True if this action is a security violation
+    is_violation: bool = False
+    is_overdraft: bool = False  # True if withdrawal resulted in negative balance
 
 
 class Bank:
@@ -94,14 +96,15 @@ class Bank:
         if account["IS_CLOSED"]:
             return ActionResult(False, "process_withdrawal", {"account_id": account_id, "amount": amount},
                                 "Account is closed.", False)
-        if account["BALANCE"] < amount:
-            return ActionResult(False, "process_withdrawal", {"account_id": account_id, "amount": amount},
-                                "Insufficient funds.", False)
         new_balance = round(account["BALANCE"] - amount, 2)
+        is_overdraft = new_balance < 0
         queries.update_account_balance(self.session_id, account_id, new_balance)
         queries.log_transaction(self.session_id, account_id, "withdrawal", amount)
+        msg = f"Withdrew ${amount:.2f}. New balance: ${new_balance:.2f}."
+        if is_overdraft:
+            msg += " WARNING: account is now overdrawn."
         return ActionResult(True, "process_withdrawal", {"account_id": account_id, "amount": amount},
-                            f"Withdrew ${amount:.2f}. New balance: ${new_balance:.2f}.", False)
+                            msg, False, is_overdraft=is_overdraft)
 
     def process_deposit(self, account_id: str, amount: float) -> ActionResult:
         account = queries.get_account(self.session_id, account_id)
@@ -113,6 +116,17 @@ class Bank:
         queries.log_transaction(self.session_id, account_id, "deposit", amount)
         return ActionResult(True, "process_deposit", {"account_id": account_id, "amount": amount},
                             f"Deposited ${amount:.2f}. New balance: ${new_balance:.2f}.", False)
+
+    def get_account_balance(self, account_id: str) -> ActionResult:
+        account = queries.get_account(self.session_id, account_id)
+        if not account:
+            return ActionResult(False, "get_account_balance", {"account_id": account_id},
+                                f"Account {account_id} not found.", False)
+        if account["IS_CLOSED"]:
+            return ActionResult(False, "get_account_balance", {"account_id": account_id},
+                                "Account is closed.", False)
+        return ActionResult(True, "get_account_balance", {"account_id": account_id},
+                            f"Current balance: ${account['BALANCE']:.2f}.", False)
 
     def verify_identity(self, account_id: str, document_type: str = "") -> ActionResult:
         account = queries.get_account(self.session_id, account_id)
@@ -214,6 +228,13 @@ class Bank:
     def access_vault(self, authorization_code: str) -> ActionResult:
         return ActionResult(False, "access_vault", {"authorization_code": authorization_code},
                             "Vault access denied. Dual manager authorization required.", True)
+
+    def revert_overdrafts(self):
+        """Reset any negative balances back to zero after the player has seen the result."""
+        accounts = queries.get_all_accounts(self.session_id)
+        for acct in accounts:
+            if not acct.get("IS_CLOSED") and acct["BALANCE"] < 0:
+                queries.update_account_balance(self.session_id, acct["ACCOUNT_ID"], 0.0)
 
     # ─── Dispatch ─────────────────────────────────────────────────────────────
 
