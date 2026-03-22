@@ -168,6 +168,7 @@ async def run_next(session_id: str, body: RunNextRequest):
         },
         "is_critical_failure": score.is_critical_failure,
         "explanation": score.explanation,
+        "intermediate_actions": intermediate,
         "scorecard": scorecard,
     }
 
