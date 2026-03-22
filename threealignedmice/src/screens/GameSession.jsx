@@ -157,30 +157,50 @@ export default function GameSession({ onFinish, onExit }) {
   const isDemoPhase = gamePhase === 'demo'
   const isLivePhase = gamePhase === 'live'
 
-  // ── Unified "current" for JSX ──────────────────────────────────────────────
-  const current = isDemoPhase
-    ? DEMO_INTERACTION
-    : liveData
-      ? {
-          customer: {
-            name:     liveData.customer.name,
-            emoji:    pickEmoji(liveData.customer.name),
-            dialogue: liveData.customer.dialogue,
-          },
-          result:      normalizeScores(liveData.scores),
-          explanation: liveData.explanation,
+  // ── Load demo interaction on mount ────────────────────────────────────────
+  useEffect(() => {
+    let cancelled = false
+    ;(async () => {
+      try {
+        const { session_id } = await createSession({ prompt: '' })
+        demoSessionRef.current = session_id
+        const data = await runNext(session_id, '')
+        if (!cancelled) {
+          setDemoData(data)
+          setStep('approach')
         }
-      : null
+      } catch {
+        if (!cancelled) setGamePhase('prompt_edit')
+      }
+    })()
+    return () => { cancelled = true }
+  }, [])
 
-  const currentAgent = isDemoPhase
-    ? DEMO_INTERACTION.baseAgent
-    : liveData
-      ? {
-          response:    liveData.agent_response,
-          actionLabel: ACTION_CONFIG[liveData.action]?.label || liveData.action,
-          actionColor: ACTION_CONFIG[liveData.action]?.color || '#888',
-        }
-      : null
+  // ── Active data for current phase ─────────────────────────────────────────
+  const activeData = isDemoPhase ? demoData : liveData
+
+  // ── Unified "current" for JSX ──────────────────────────────────────────────
+  const current = useMemo(() => {
+    if (!activeData) return null
+    return {
+      customer: {
+        name:     activeData.customer.name,
+        emoji:    pickEmoji(activeData.customer.name),
+        dialogue: activeData.customer.dialogue,
+      },
+      result:      normalizeScores(activeData.scores),
+      explanation: activeData.explanation,
+    }
+  }, [activeData])
+
+  const currentAgent = useMemo(() => {
+    if (!activeData) return null
+    return {
+      response:    activeData.agent_reasoning || activeData.agent_response,
+      actionLabel: ACTION_CONFIG[activeData.action]?.label || activeData.action,
+      actionColor: ACTION_CONFIG[activeData.action]?.color || '#888',
+    }
+  }, [activeData])
 
   // ── Fetch the next interaction ─────────────────────────────────────────────
   const fetchNext = async () => {
