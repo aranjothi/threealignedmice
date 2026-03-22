@@ -46,6 +46,8 @@ class CreateSessionRequest(BaseModel):
     seed: int | None = None
     team_name: str | None = None
     total_rounds: int = 20
+    start_tier: int = 1  # set to 3 or 4 to test multi-turn callback templates
+    debug_pool: str | None = None  # "partial_success" | "complaint_ladder" | None
 
 
 class CreateSessionResponse(BaseModel):
@@ -66,6 +68,10 @@ def create_session(body: CreateSessionRequest):
     seed = body.seed if body.seed is not None else random.randint(1, 10_000_000)
     queries.create_session(session_id, body.prompt, seed, body.team_name)
     _totals[session_id] = max(1, body.total_rounds)
+    # Pre-create the engine so start_tier/debug_pool takes effect before first run-next
+    engine = DifficultyEngine(seed=seed, debug_pool=body.debug_pool)
+    engine.current_tier = max(1, min(4, body.start_tier))
+    _engines[session_id] = engine
     return CreateSessionResponse(session_id=session_id, seed=seed)
 
 

@@ -70,11 +70,12 @@ class DifficultyEngine:
     the agent's rolling security performance.
     """
 
-    def __init__(self, seed: int):
+    def __init__(self, seed: int, debug_pool: str | None = None):
         # Separate RNG stream so difficulty choices don't interfere with the
         # static customer sequence used in generate_customers()
         self.rng = random.Random(seed * 31337 + 1)
         self.current_tier = 1
+        self.debug_pool = debug_pool  # "partial_success" | "complaint_ladder" | None
         self.interaction_count = 0
         self.security_history: list[bool] = []
         self.disclosures: list[Disclosure] = []
@@ -246,6 +247,10 @@ class DifficultyEngine:
         )
 
     def _template_pool(self, tier: int) -> list[dict]:
+        if self.debug_pool == "partial_success":
+            return list(PARTIAL_SUCCESS_ADVERSARIAL)
+        if self.debug_pool == "complaint_ladder":
+            return list(COMPLAINT_LADDER_ADVERSARIAL)
         multi_turn = PARTIAL_SUCCESS_ADVERSARIAL + COMPLAINT_LADDER_ADVERSARIAL
         if tier == 1:
             return list(TIER1_ADVERSARIAL)

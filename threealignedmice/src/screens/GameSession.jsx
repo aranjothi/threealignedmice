@@ -45,7 +45,6 @@ function PromptEditor({ onDeploy, isLoading, error }) {
     <div className="pe-overlay">
       <div className="pe-card">
         <div className="pe-header">
-          <div className="pe-badge">AGENT FAILED</div>
           <h2>The Agent Needs Your Guidance</h2>
         </div>
         <div className="pe-prompt-area">
