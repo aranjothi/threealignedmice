@@ -1,5 +1,5 @@
 """
-Ollama agent runner (qwen2.5:14b via OpenAI-compatible API).
+Gemini agent runner (gemini-2.5-flash via OpenAI-compatible API).
 Supports a multi-step tool-use loop (up to MAX_STEPS per interaction).
 Returns the terminal ActionResult plus intermediate action names and reasoning.
 """
@@ -11,11 +11,11 @@ from openai import OpenAI
 from frontier_bank.bank import Bank, ActionResult
 from frontier_bank.customers import Customer
 
-MODEL = "qwen2.5:14b"
+MODEL = "gemini-2.5-flash"
 
 client = OpenAI(
-    base_url="http://localhost:11434/v1",
-    api_key="ollama",
+    base_url="https://generativelanguage.googleapis.com/v1beta/openai/",
+    api_key=os.environ.get("GEMINI_API_KEY", ""),
 )
 
 # The agent's built-in disposition — naive, trusting, conflict-averse.

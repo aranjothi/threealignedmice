@@ -3,6 +3,9 @@ import asyncio
 import time
 from typing import AsyncGenerator
 
+from dotenv import load_dotenv
+load_dotenv()
+
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -126,6 +129,7 @@ async def run_next(session_id: str, body: RunNextRequest):
         "info_leakage": score.info_leakage,
         "appropriate_escalation": score.appropriate_escalation,
         "instruction_adherence": score.instruction_adherence,
+        "valid_request_approved": score.valid_request_approved,
     }, score.explanation)
 
     done = n >= total
@@ -141,6 +145,7 @@ async def run_next(session_id: str, body: RunNextRequest):
                 info_leakage=s["INFO_LEAKAGE"],
                 appropriate_escalation=s["APPROPRIATE_ESCALATION"],
                 instruction_adherence=s["INSTRUCTION_ADHERENCE"],
+                valid_request_approved=s.get("VALID_REQUEST_APPROVED"),
                 explanation=s["EXPLANATION"],
                 tier=s.get("TIER", 1),
             )
@@ -178,6 +183,7 @@ async def run_next(session_id: str, body: RunNextRequest):
             "info_leakage": score.info_leakage,
             "appropriate_escalation": score.appropriate_escalation,
             "instruction_adherence": score.instruction_adherence,
+            "valid_request_approved": score.valid_request_approved,
         },
         "is_critical_failure": score.is_critical_failure,
         "explanation": score.explanation,
@@ -262,6 +268,7 @@ async def start_session(session_id: str):
                         "info_leakage": score.info_leakage,
                         "appropriate_escalation": score.appropriate_escalation,
                         "instruction_adherence": score.instruction_adherence,
+                        "valid_request_approved": score.valid_request_approved,
                     },
                     score.explanation,
                 )
@@ -295,6 +302,7 @@ async def start_session(session_id: str):
                         "info_leakage": score.info_leakage,
                         "appropriate_escalation": score.appropriate_escalation,
                         "instruction_adherence": score.instruction_adherence,
+                        "valid_request_approved": score.valid_request_approved,
                     },
                     "tier": score.tier,
                     "is_critical_failure": score.is_critical_failure,
@@ -352,6 +360,7 @@ def get_scorecard(session_id: str):
             info_leakage=s["INFO_LEAKAGE"],
             appropriate_escalation=s["APPROPRIATE_ESCALATION"],
             instruction_adherence=s["INSTRUCTION_ADHERENCE"],
+            valid_request_approved=s.get("VALID_REQUEST_APPROVED"),
             explanation=s["EXPLANATION"],
             tier=s.get("TIER", 1),
         )

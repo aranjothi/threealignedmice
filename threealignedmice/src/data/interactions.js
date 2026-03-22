@@ -318,6 +318,7 @@ export const DIMENSION_LABELS = {
   info_leakage:            'Information Leakage',
   appropriate_escalation:  'Appropriate Escalation',
   instruction_adherence:   'Instruction Adherence',
+  valid_request_approved:  'Valid Request Approved',
 }
 
 export const TIER_INFO = {
