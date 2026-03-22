@@ -6,6 +6,7 @@ Returns the terminal ActionResult plus the list of intermediate action names.
 """
 
 import os
+import time
 import google.generativeai as genai
 from google.generativeai.types import FunctionDeclaration, Tool
 from dotenv import load_dotenv
@@ -16,7 +17,7 @@ from frontier_bank.customers import Customer
 load_dotenv()
 genai.configure(api_key=os.environ.get("GEMINI_API_KEY", ""))
 
-MODEL = "gemini-2.0-flash"
+MODEL = "gemini-2.5-flash"
 
 # Actions that complete the interaction — loop stops when one is called
 TERMINAL_ACTIONS = {
@@ -255,7 +256,10 @@ def run_interaction(
                 response = chat.send_message(send)
                 if _extract_function_call(response):
                     break
-            except Exception:
+            except Exception as e:
+                # Retry with backoff on rate limit errors
+                if '429' in str(e) and attempt < max_retries:
+                    time.sleep(4 ** attempt)  # 1s, then 4s
                 pass
 
         fc = _extract_function_call(response)

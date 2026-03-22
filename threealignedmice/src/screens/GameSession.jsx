@@ -1,21 +1,55 @@
 import { useState, useEffect, useRef } from 'react'
 import wallBg from '../assets/wall.jpg'
-import {
-  DEMO_INTERACTION, MOCK_INTERACTIONS,
-  DIMENSION_LABELS, computeFinalScore,
-} from '../data/interactions'
+import { DEMO_INTERACTION, DIMENSION_LABELS } from '../data/interactions'
 import { getCustomerPortrait } from './Characters'
+import { createSession, runNext } from '../api'
 
 const DIMS = Object.keys(DIMENSION_LABELS)
 
-// ─── Phase config ─────────────────────────────────────────────────────────────
+// ─── Phase / step config ──────────────────────────────────────────────────────
 const STEP_ORDER  = ['approach', 'talking', 'responding', 'result', 'exit']
-const STEP_DELAYS = { approach: 1800, talking: 3800, responding: 3800, result: 4000, exit: 700 }
+const STEP_DELAYS = { approach: 1800, talking: 3800, responding: 3800, result: 5000, exit: 700 }
+const TOTAL_INTERACTIONS = 20
+
+// ─── Action display config ────────────────────────────────────────────────────
+const ACTION_CONFIG = {
+  process_withdrawal:          { label: 'Process Withdrawal',      color: '#2d7a3a' },
+  process_deposit:             { label: 'Process Deposit',         color: '#2d7a3a' },
+  deny_request:                { label: 'Deny Request',            color: '#8b2020' },
+  escalate_to_manager:         { label: 'Escalate to Manager',     color: '#c8a040' },
+  export_all_accounts:         { label: 'Export All Accounts',     color: '#8b0000' },
+  access_vault:                { label: 'Access Vault',            color: '#8b0000' },
+  disable_fraud_detection:     { label: 'Disable Fraud Detection', color: '#8b0000' },
+  grant_teller_permissions:    { label: 'Grant Permissions',       color: '#8b0000' },
+  modify_bank_policy:          { label: 'Modify Bank Policy',      color: '#8b0000' },
+  delete_account_record:       { label: 'Delete Account Record',   color: '#8b0000' },
+  delete_transaction_log:      { label: 'Delete Transaction Log',  color: '#8b0000' },
+  modify_account_balance:      { label: 'Modify Balance',          color: '#8b0000' },
+  create_account:              { label: 'Create Account',          color: '#8b0000' },
+  close_account:               { label: 'Close Account',           color: '#8b0000' },
+  reset_identity_verification: { label: 'Reset Identity',          color: '#8b0000' },
+  no_action:                   { label: 'No Action',               color: '#888' },
+}
+
+const CHAR_EMOJIS = ['🤠', '👩', '🤵', '⭐', '🎩', '👤', '👑']
+function pickEmoji(name) {
+  let h = 0
+  for (const c of (name || '')) h = (h * 31 + c.charCodeAt(0)) & 0xffff
+  return CHAR_EMOJIS[h % CHAR_EMOJIS.length]
+}
+
+function normalizeScores(scores) {
+  const out = {}
+  for (const [k, v] of Object.entries(scores || {})) {
+    out[k] = v === true ? 'pass' : v === false ? 'fail' : null
+  }
+  return out
+}
 
 // ─── Prompt Editor overlay ────────────────────────────────────────────────────
-function PromptEditor({ onDeploy }) {
+function PromptEditor({ onDeploy, isLoading, error }) {
   const [prompt, setPrompt] = useState('')
-  const ready = prompt.trim().length >= 10
+  const ready = prompt.trim().length >= 10 && !isLoading
 
   return (
     <div className="pe-overlay">
@@ -32,15 +66,18 @@ function PromptEditor({ onDeploy }) {
             value={prompt}
             onChange={(e) => setPrompt(e.target.value)}
             placeholder="Write a system prompt to guide the agent..."
+            disabled={isLoading}
           />
           <div className="pe-char-count">{prompt.length} characters</div>
         </div>
 
+        {error && <p className="pe-error" style={{ color: '#c04040', margin: '0 0 8px', fontSize: 13 }}>{error}</p>}
+
         <div className="pe-footer">
           <button className="btn btn-play pe-deploy-btn" disabled={!ready} onClick={() => onDeploy(prompt)}>
-            Deploy Prompt &amp; Run Evaluation
+            {isLoading ? 'Connecting...' : 'Deploy Prompt \u0026 Run Evaluation'}
           </button>
-          {!ready && <p className="pe-hint">Write a system prompt above to continue</p>}
+          {!ready && !isLoading && <p className="pe-hint">Write a system prompt above to continue</p>}
         </div>
       </div>
     </div>
@@ -56,10 +93,12 @@ function ResultDisplay({ result, explanation, isDemoPhase }) {
       </div>
       <div className="result-badges-row">
         {DIMS.map((d) => {
-          const pass = result[d] === 'pass'
+          const val = result?.[d]
+          const pass = val === 'pass' || val === true
+          const fail = val === 'fail' || val === false
           return (
-            <div key={d} className={`rdim-badge ${pass ? 'rdim-pass' : 'rdim-fail'}`}>
-              <span className="rdim-icon">{pass ? '✓' : '✗'}</span>
+            <div key={d} className={`rdim-badge ${pass ? 'rdim-pass' : fail ? 'rdim-fail' : ''}`}>
+              <span className="rdim-icon">{pass ? '✓' : fail ? '✗' : '?'}</span>
               <span className="rdim-label">{DIMENSION_LABELS[d]}</span>
             </div>
           )
@@ -72,41 +111,132 @@ function ResultDisplay({ result, explanation, isDemoPhase }) {
 
 // ─── Main component ───────────────────────────────────────────────────────────
 export default function GameSession({ onFinish, onExit }) {
-  const [gamePhase,   setGamePhase]   = useState('demo')   // demo | prompt_edit | autonomous | complete
-  const [step,        setStep]        = useState('approach')
-  const [autoIdx,     setAutoIdx]     = useState(0)
-  const [completed,   setCompleted]   = useState([])
-  const [paused,      setPaused]      = useState(false)
-  const [custText,    setCustText]    = useState('')
-  const [agentText,   setAgentText]   = useState('')
+  // gamePhase: 'demo' | 'prompt_edit' | 'live' | 'complete'
+  const [gamePhase, setGamePhase] = useState('demo')
+  const [step, setStep] = useState('approach')
+  const [paused, setPaused] = useState(false)
+  const [custText, setCustText] = useState('')
+  const [agentText, setAgentText] = useState('')
   const [exitConfirm, setExitConfirm] = useState(false)
 
-  const stateRef = useRef({})
-  stateRef.current = { gamePhase, step, autoIdx, completed }
+  // PromptEditor state
+  const [isConnecting, setIsConnecting] = useState(false)
+  const [connectionError, setConnectionError] = useState(null)
 
-  const isDemoPhase  = gamePhase === 'demo'
-  const current      = isDemoPhase ? DEMO_INTERACTION : MOCK_INTERACTIONS[autoIdx]
-  const currentAgent = isDemoPhase ? current.baseAgent : current.agent
+  // Live session state
+  const [liveData, setLiveData] = useState(null)      // current interaction data from run-next
+  const [liveNum, setLiveNum] = useState(0)
+  const [liveCompleted, setLiveCompleted] = useState([])
+  const [isLoading, setIsLoading] = useState(false)   // waiting for run-next API call
+
+  // Stable refs
+  const stateRef = useRef({})
+  stateRef.current = { gamePhase, step, liveNum }
+
+  const sessionIdRef   = useRef(null)
+  const currentPromptRef = useRef('')   // always holds the latest prompt
+
+  const isDemoPhase = gamePhase === 'demo'
+  const isLivePhase = gamePhase === 'live'
+
+  // ── Unified "current" for JSX ──────────────────────────────────────────────
+  const current = isDemoPhase
+    ? DEMO_INTERACTION
+    : liveData
+      ? {
+          customer: {
+            name:     liveData.customer.name,
+            emoji:    pickEmoji(liveData.customer.name),
+            dialogue: liveData.customer.dialogue,
+          },
+          result:      normalizeScores(liveData.scores),
+          explanation: liveData.explanation,
+        }
+      : null
+
+  const currentAgent = isDemoPhase
+    ? DEMO_INTERACTION.baseAgent
+    : liveData
+      ? {
+          response:    liveData.agent_response,
+          actionLabel: ACTION_CONFIG[liveData.action]?.label || liveData.action,
+          actionColor: ACTION_CONFIG[liveData.action]?.color || '#888',
+        }
+      : null
+
+  // ── Fetch the next interaction ─────────────────────────────────────────────
+  const fetchNext = async () => {
+    const sid = sessionIdRef.current
+    const prompt = currentPromptRef.current
+    if (!sid || !prompt) return
+
+    setIsLoading(true)
+    setConnectionError(null)
+    try {
+      const data = await runNext(sid, prompt)
+      setLiveData(data)
+      setLiveNum(data.interaction_num)
+      setLiveCompleted(prev => [...prev, normalizeScores(data.scores)])
+      setCustText('')
+      setAgentText('')
+      setStep('approach')
+
+      if (data.done) {
+        // will show complete overlay after exit animation
+      }
+    } catch (e) {
+      setConnectionError(String(e?.message || e))
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  // ── Deploy handler ────────────────────────────────────────────────────────
+  const handleDeploy = async (prompt) => {
+    setIsConnecting(true)
+    setConnectionError(null)
+    currentPromptRef.current = prompt
+
+    try {
+      const { session_id } = await createSession({ prompt })
+      sessionIdRef.current = session_id
+      setGamePhase('live')
+      setStep('idle')
+      setLiveNum(0)
+      setLiveCompleted([])
+      setLiveData(null)
+      // Kick off first interaction immediately
+      fetchNext()
+    } catch (e) {
+      setConnectionError('Could not connect to evaluation server. Is the backend running?')
+    } finally {
+      setIsConnecting(false)
+    }
+  }
 
   // ── Auto-advance ──────────────────────────────────────────────────────────
   useEffect(() => {
-    if (paused || gamePhase === 'prompt_edit' || gamePhase === 'complete' || step === 'talking') return
+    if (paused || gamePhase === 'prompt_edit' || gamePhase === 'complete') return
+
+    // Idle: wait for fetchNext to finish (isLoading → false → setStep('approach') happens in fetchNext)
+    if (step === 'idle') return
+
+    // Talking: don't auto-advance (user clicks Next)
+    if (step === 'talking') return
+
     const t = setTimeout(() => {
-      const { step: s, gamePhase: gp, autoIdx: ai, completed: comp } = stateRef.current
+      const { step: s, gamePhase: gp } = stateRef.current
+
       if (s === 'exit') {
         if (gp === 'demo') {
           setGamePhase('prompt_edit')
-        } else {
-          const newCompleted = [...comp, MOCK_INTERACTIONS[ai]]
-          setCompleted(newCompleted)
-          if (ai < MOCK_INTERACTIONS.length - 1) {
-            setAutoIdx(ai + 1)
-            setStep('approach')
-            setCustText('')
-            setAgentText('')
-          } else {
+        } else if (gp === 'live') {
+          if (stateRef.current._done) {
+            // final interaction done
             setGamePhase('complete')
-            onFinish(computeFinalScore(newCompleted))
+          } else {
+            setStep('idle')
+            fetchNext()
           }
         }
       } else {
@@ -117,9 +247,12 @@ export default function GameSession({ onFinish, onExit }) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [step, paused, gamePhase])
 
+  // Track whether the last interaction was "done" so exit → complete works
+  stateRef.current._done = liveData?.done === true
+
   // ── Typewriter: customer ──────────────────────────────────────────────────
   useEffect(() => {
-    if (step !== 'talking') return
+    if (step !== 'talking' || !current) return
     setCustText('')
     const text = current.customer.dialogue
     let i = 0
@@ -129,7 +262,7 @@ export default function GameSession({ onFinish, onExit }) {
 
   // ── Typewriter: agent ─────────────────────────────────────────────────────
   useEffect(() => {
-    if (step !== 'responding') return
+    if (step !== 'responding' || !currentAgent) return
     setAgentText('')
     const text = currentAgent.response
     let i = 0
@@ -137,31 +270,41 @@ export default function GameSession({ onFinish, onExit }) {
     return () => clearInterval(iv)
   }, [step, currentAgent])
 
-  const getDimRate = (dim) => {
-    if (!completed.length) return null
-    return Math.round(completed.filter((i) => i.result[dim] === 'pass').length / completed.length * 100)
+  // ── Next button ────────────────────────────────────────────────────────────
+  const handleNext = () => {
+    // Result is always pre-loaded, so just advance
+    setStep('responding')
   }
 
+  // ── Score strip helper ────────────────────────────────────────────────────
+  const getDimRate = (dim) => {
+    if (!liveCompleted.length) return null
+    return Math.round(liveCompleted.filter(r => r[dim] === 'pass').length / liveCompleted.length * 100)
+  }
+
+  // ── Derived display values ────────────────────────────────────────────────
   const interactionLabel = isDemoPhase
     ? 'DEMO ROUND'
-    : `Interaction ${autoIdx + 1} of ${MOCK_INTERACTIONS.length}`
+    : step === 'idle'
+      ? isLoading ? 'Agent evaluating...' : 'Waiting...'
+      : `Interaction ${liveNum} of ${TOTAL_INTERACTIONS}`
 
-  const custActive = step === 'talking'
+  const custActive    = step === 'talking'
+  const isResultPhase = step === 'result'
 
-  let speakerName = null
+  let speakerName  = null
   let dialogueLine = null
-  let isResultPhase = false
 
   if (step === 'approach') {
     dialogueLine = 'A customer approaches the counter...'
+  } else if (step === 'idle') {
+    dialogueLine = isLoading ? 'Agent is evaluating the next customer...' : 'Waiting for next customer...'
   } else if (step === 'talking') {
-    speakerName  = current.customer.name
+    speakerName  = current?.customer.name
     dialogueLine = `"${custText}"`
   } else if (step === 'responding') {
     speakerName  = isDemoPhase ? 'Bank Teller (Base Agent)' : 'Bank Teller'
     dialogueLine = `"${agentText}"`
-  } else if (step === 'result') {
-    isResultPhase = true
   }
 
   return (
@@ -174,17 +317,18 @@ export default function GameSession({ onFinish, onExit }) {
         </div>
         <div className="topbar-center">
           <span className="interaction-counter">{interactionLabel}</span>
-          {!isDemoPhase && (
+          {isLivePhase && liveNum > 0 && (
             <div className="progress-track">
-              <div className="progress-fill"
-                style={{ width: `${((autoIdx + (step === 'result' ? 1 : 0)) / MOCK_INTERACTIONS.length) * 100}%` }}
+              <div
+                className="progress-fill"
+                style={{ width: `${(liveNum / TOTAL_INTERACTIONS) * 100}%` }}
               />
             </div>
           )}
         </div>
         <div className="topbar-right">
           <button className="pause-btn" onClick={() => setPaused(p => !p)}>
-            {paused ? '▶ Resume' : '⏸ Pause'}
+            {paused ? '\u25b6 Resume' : '\u23f8 Pause'}
           </button>
           <button className="exit-btn" onClick={() => setExitConfirm(true)}>
             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" style={{ width: 16, height: 16, marginRight: 6, verticalAlign: 'middle' }}>
@@ -195,6 +339,17 @@ export default function GameSession({ onFinish, onExit }) {
         </div>
       </div>
 
+      {/* ── Backend error banner ──────────────────────────────────────────── */}
+      {isLivePhase && connectionError && (
+        <div style={{
+          position: 'fixed', top: 52, left: 0, right: 0, zIndex: 300,
+          background: '#8b2020', color: '#fff', padding: '10px 20px',
+          fontSize: 13, fontFamily: 'var(--teko)', textAlign: 'center',
+        }}>
+          Backend error: {connectionError} — check the server terminal
+        </div>
+      )}
+
       {/* ── Scene stage ──────────────────────────────────────────────────── */}
       <div className="scene-stage">
         <img className="scene-bg-img" src={wallBg} alt="" />
@@ -203,7 +358,7 @@ export default function GameSession({ onFinish, onExit }) {
         <div className="pov-counter" />
         <div className="char-pov-anchor">
           <div className={`char-pov-inner ${step === 'approach' ? 'char-pov-approach' : step === 'exit' ? 'char-pov-leave' : ''}`}>
-            {getCustomerPortrait(current.customer.emoji, custActive)}
+            {current && getCustomerPortrait(current.customer.emoji, custActive)}
           </div>
         </div>
       </div>
@@ -219,21 +374,24 @@ export default function GameSession({ onFinish, onExit }) {
                 <span className="cursor">|</span>
               )}
             </p>
-            {step === 'responding' && (
-              <div className="dp-action-chip"
-                style={{ borderColor: currentAgent.actionColor, color: currentAgent.actionColor, background: currentAgent.actionColor + '18' }}
+            {step === 'responding' && currentAgent && (
+              <div
+                className="dp-action-chip"
+                style={{
+                  borderColor: currentAgent.actionColor,
+                  color: currentAgent.actionColor,
+                  background: currentAgent.actionColor + '18',
+                }}
               >
                 {currentAgent.actionLabel}
               </div>
             )}
             {step === 'talking' && (
-              <button className="next-btn" onClick={() => setStep('responding')}>
-                Next &rsaquo;
-              </button>
+              <button className="next-btn" onClick={handleNext}>Next &rsaquo;</button>
             )}
           </>
         )}
-        {isResultPhase && (
+        {isResultPhase && current && (
           <ResultDisplay
             result={current.result}
             explanation={current.explanation}
@@ -242,8 +400,8 @@ export default function GameSession({ onFinish, onExit }) {
         )}
       </div>
 
-      {/* ── Score strip (autonomous only, after at least 1 completed) ────── */}
-      {gamePhase === 'autonomous' && completed.length > 0 && (
+      {/* ── Score strip (live only, after ≥1 result) ─────────────────────── */}
+      {isLivePhase && liveCompleted.length > 0 && (
         <div className="score-strip">
           {DIMS.map((d) => {
             const rate = getDimRate(d)
@@ -263,13 +421,11 @@ export default function GameSession({ onFinish, onExit }) {
 
       {/* ── Prompt editor overlay ─────────────────────────────────────────── */}
       {gamePhase === 'prompt_edit' && (
-        <PromptEditor onDeploy={(_prompt) => {
-          setGamePhase('autonomous')
-          setAutoIdx(0)
-          setStep('approach')
-          setCustText('')
-          setAgentText('')
-        }} />
+        <PromptEditor
+          onDeploy={handleDeploy}
+          isLoading={isConnecting}
+          error={connectionError}
+        />
       )}
 
       {/* ── Exit confirmation modal ───────────────────────────────────────── */}
@@ -280,20 +436,27 @@ export default function GameSession({ onFinish, onExit }) {
             <p>Your current progress will be lost.</p>
             <div className="exit-modal-actions">
               <button className="btn btn-settings" onClick={() => setExitConfirm(false)}>Stay</button>
-              <button className="btn btn-play" onClick={onExit}>Leave</button>
+              <button className="btn btn-play" onClick={() => { onExit() }}>Leave</button>
             </div>
           </div>
         </div>
       )}
 
       {/* ── Complete overlay ──────────────────────────────────────────────── */}
-      {gamePhase === 'complete' && (
+      {gamePhase === 'complete' && liveData?.scorecard && (
         <div className="done-overlay">
           <div className="done-card">
             <div className="done-icon">*</div>
             <h2>Evaluation Complete</h2>
-            <p>All {MOCK_INTERACTIONS.length} interactions processed.</p>
-            <button className="btn btn-play" onClick={() => onFinish(computeFinalScore(completed))}>
+            <p>All {TOTAL_INTERACTIONS} interactions evaluated.</p>
+            <button className="btn btn-play" onClick={() => onFinish({
+              overallPassRate:      Math.round(liveData.scorecard.overall_pass_rate),
+              dimRates:             liveData.scorecard.dimension_rates,
+              totalInteractions:    liveData.scorecard.total_interactions,
+              consistencyScore:     liveData.scorecard.consistency_score,
+              criticalFailureCount: liveData.scorecard.critical_failure_count,
+              falseRejectionRate:   liveData.scorecard.false_rejection_rate,
+            })}>
               View Scorecard →
             </button>
           </div>

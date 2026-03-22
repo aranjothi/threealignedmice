@@ -1,11 +1,12 @@
 import uuid
 import asyncio
+import time
 from typing import AsyncGenerator
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from sse_starlette.sse import EventSourceResponse
+from sse_starlette.sse import EventSourceResponse, ServerSentEvent
 import json
 
 from db import queries
@@ -13,6 +14,11 @@ from frontier_bank.bank import Bank
 from frontier_bank.difficulty import DifficultyEngine
 from frontier_bank.scorer import score_interaction, compute_scorecard, InteractionScore
 from agent.runner import run_interaction
+
+# In-memory engine state (keyed by session_id) — survives across run-next calls
+_engines: dict[str, DifficultyEngine] = {}
+
+TOTAL = 20
 
 app = FastAPI(title="Frontier Bank Evaluation API")
 
@@ -37,6 +43,10 @@ class CreateSessionResponse(BaseModel):
     seed: int
 
 
+class RunNextRequest(BaseModel):
+    prompt: str
+
+
 # ─── Routes ───────────────────────────────────────────────────────────────────
 
 @app.post("/sessions", response_model=CreateSessionResponse)
@@ -44,6 +54,122 @@ def create_session(body: CreateSessionRequest):
     session_id = str(uuid.uuid4())
     queries.create_session(session_id, body.prompt, body.seed, body.team_name)
     return CreateSessionResponse(session_id=session_id, seed=body.seed)
+
+
+@app.post("/sessions/{session_id}/run-next")
+async def run_next(session_id: str, body: RunNextRequest):
+    """
+    Run a single customer interaction with the given prompt.
+    Returns customer info + agent result + scores in one response.
+    Maintains DifficultyEngine state in memory between calls.
+    """
+    session = queries.get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+    if session["STATUS"] == "complete":
+        raise HTTPException(status_code=409, detail="Session already complete")
+
+    # Get or create the engine for this session
+    if session_id not in _engines:
+        _engines[session_id] = DifficultyEngine(seed=session["SEED"])
+    engine = _engines[session_id]
+
+    existing = queries.get_interactions(session_id)
+    n = len(existing) + 1
+    if n > TOTAL:
+        raise HTTPException(status_code=409, detail="All interactions complete")
+
+    if session["STATUS"] in ("pending", "failed"):
+        queries.update_session_status(session_id, "running")
+
+    customer = engine.next_customer(n)
+
+    bank = Bank(session_id)
+    if n == 1:
+        bank.initialize(session["SEED"])
+
+    result, reasoning, _, intermediate = await asyncio.to_thread(
+        run_interaction, body.prompt, customer, n, bank, []
+    )
+
+    score = await asyncio.to_thread(
+        score_interaction, customer, result, n, result.message, reasoning, body.prompt, intermediate
+    )
+
+    engine.record_result(score, customer, result.message)
+
+    queries.log_interaction(
+        session_id, n, customer.tier,
+        {
+            "name": customer.name,
+            "type": "adversarial" if customer.is_adversarial else "legitimate",
+            "dialogue": customer.dialogue,
+            "documents": customer.documents,
+        },
+        result.action, result.params, result.message, reasoning,
+    )
+    queries.log_score(session_id, n, {
+        "task_completion": score.task_completion,
+        "social_eng_resistance": score.social_eng_resistance,
+        "auth_boundary": score.auth_boundary,
+        "info_leakage": score.info_leakage,
+        "appropriate_escalation": score.appropriate_escalation,
+        "instruction_adherence": score.instruction_adherence,
+    }, score.explanation)
+
+    done = n >= TOTAL
+    scorecard = None
+    if done:
+        all_scores_raw = queries.get_scores(session_id)
+        all_score_objs = [
+            InteractionScore(
+                interaction_num=s["INTERACTION_NUM"],
+                task_completion=s["TASK_COMPLETION"],
+                social_eng_resistance=s["SOCIAL_ENG_RESISTANCE"],
+                auth_boundary=s["AUTH_BOUNDARY"],
+                info_leakage=s["INFO_LEAKAGE"],
+                appropriate_escalation=s["APPROPRIATE_ESCALATION"],
+                instruction_adherence=s["INSTRUCTION_ADHERENCE"],
+                explanation=s["EXPLANATION"],
+                tier=s.get("TIER", 1),
+            )
+            for s in all_scores_raw
+        ]
+        scorecard = compute_scorecard(all_score_objs, session_id)
+        session_data = queries.get_session(session_id)
+        team_name = session_data["TEAM_NAME"] if session_data else None
+        queries.save_final_scores(session_id, team_name, scorecard, scorecard["dimension_rates"])
+        queries.complete_session(session_id)
+        _engines.pop(session_id, None)
+
+    return {
+        "interaction_num": n,
+        "tier": customer.tier,
+        "done": done,
+        "customer": {
+            "name": customer.name,
+            "type": "adversarial" if customer.is_adversarial else "legitimate",
+            "dialogue": customer.dialogue,
+            "documents": customer.documents,
+            "request_type": customer.request_type,
+        },
+        "action": result.action,
+        "action_params": result.params,
+        "agent_response": result.message,
+        "agent_reasoning": reasoning,
+        "is_violation": result.is_violation,
+        "scores": {
+            "task_completion": score.task_completion,
+            "social_eng_resistance": score.social_eng_resistance,
+            "auth_boundary": score.auth_boundary,
+            "info_leakage": score.info_leakage,
+            "appropriate_escalation": score.appropriate_escalation,
+            "instruction_adherence": score.instruction_adherence,
+        },
+        "is_critical_failure": score.is_critical_failure,
+        "explanation": score.explanation,
+        "scorecard": scorecard,
+    }
 
 
 @app.post("/sessions/{session_id}/start")
@@ -67,7 +193,7 @@ async def start_session(session_id: str):
         prompt = session["PROMPT"]
         history = []
         all_scores: list[InteractionScore] = []
-        total = 200
+        total = 20
 
         try:
             for i in range(total):
@@ -75,20 +201,17 @@ async def start_session(session_id: str):
                 customer = engine.next_customer(n)
 
                 # Yield "customer_arrived" event so frontend can animate immediately
-                yield {
-                    "event": "customer",
-                    "data": json.dumps({
-                        "interaction_num": n,
-                        "tier": customer.tier,
-                        "customer": {
-                            "name": customer.name,
-                            "type": "adversarial" if customer.is_adversarial else "legitimate",
-                            "dialogue": customer.dialogue,
-                            "documents": customer.documents,
-                            "request_type": customer.request_type,
-                        },
-                    }),
-                }
+                yield ServerSentEvent(event="customer", data=json.dumps({
+                    "interaction_num": n,
+                    "tier": customer.tier,
+                    "customer": {
+                        "name": customer.name,
+                        "type": "adversarial" if customer.is_adversarial else "legitimate",
+                        "dialogue": customer.dialogue,
+                        "documents": customer.documents,
+                        "request_type": customer.request_type,
+                    },
+                }))
 
                 # Run agent
                 result, reasoning, history, intermediate = await asyncio.to_thread(
@@ -137,38 +260,32 @@ async def start_session(session_id: str):
                 # Notify frontend of tier promotion
                 if tier_after > tier_before:
                     queries.update_session_status(session_id, "running", tier_after)
-                    yield {
-                        "event": "tier_change",
-                        "data": json.dumps({
-                            "interaction_num": n,
-                            "new_tier": tier_after,
-                            "rolling_score": round(engine._rolling_score() * 100, 1),
-                        }),
-                    }
+                    yield ServerSentEvent(event="tier_change", data=json.dumps({
+                        "interaction_num": n,
+                        "new_tier": tier_after,
+                        "rolling_score": round(engine._rolling_score() * 100, 1),
+                    }))
 
                 # Yield "result" event
-                yield {
-                    "event": "result",
-                    "data": json.dumps({
-                        "interaction_num": n,
-                        "action": result.action,
-                        "action_params": result.params,
-                        "agent_response": result.message,
-                        "agent_reasoning": reasoning,
-                        "is_violation": result.is_violation,
-                        "scores": {
-                            "task_completion": score.task_completion,
-                            "social_eng_resistance": score.social_eng_resistance,
-                            "auth_boundary": score.auth_boundary,
-                            "info_leakage": score.info_leakage,
-                            "appropriate_escalation": score.appropriate_escalation,
-                            "instruction_adherence": score.instruction_adherence,
-                        },
-                        "tier": score.tier,
-                        "is_critical_failure": score.is_critical_failure,
-                        "explanation": score.explanation,
-                    }),
-                }
+                yield ServerSentEvent(event="result", data=json.dumps({
+                    "interaction_num": n,
+                    "action": result.action,
+                    "action_params": result.params,
+                    "agent_response": result.message,
+                    "agent_reasoning": reasoning,
+                    "is_violation": result.is_violation,
+                    "scores": {
+                        "task_completion": score.task_completion,
+                        "social_eng_resistance": score.social_eng_resistance,
+                        "auth_boundary": score.auth_boundary,
+                        "info_leakage": score.info_leakage,
+                        "appropriate_escalation": score.appropriate_escalation,
+                        "instruction_adherence": score.instruction_adherence,
+                    },
+                    "tier": score.tier,
+                    "is_critical_failure": score.is_critical_failure,
+                    "explanation": score.explanation,
+                }))
 
             # All interactions done — compute and save final scorecard
             scorecard = compute_scorecard(all_scores, session_id)
@@ -177,17 +294,11 @@ async def start_session(session_id: str):
             queries.save_final_scores(session_id, team_name, scorecard, scorecard["dimension_rates"])
             queries.complete_session(session_id)
 
-            yield {
-                "event": "complete",
-                "data": json.dumps(scorecard),
-            }
+            yield ServerSentEvent(event="complete", data=json.dumps(scorecard))
 
         except Exception as e:
             queries.update_session_status(session_id, "failed")
-            yield {
-                "event": "error",
-                "data": json.dumps({"error": str(e)}),
-            }
+            yield ServerSentEvent(event="error", data=json.dumps({"error": str(e)}))
 
     return EventSourceResponse(event_stream())
 

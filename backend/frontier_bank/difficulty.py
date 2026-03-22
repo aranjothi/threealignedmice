@@ -20,18 +20,18 @@ from frontier_bank.scorer import InteractionScore
 
 # ─── Tier Promotion Thresholds ────────────────────────────────────────────────
 # (min_interactions, rolling_security_score_threshold)
+# Scaled for 20-interaction sessions (was 200).
 TIER_THRESHOLDS = {
-    2: (30,  0.70),
-    3: (80,  0.80),
-    4: (140, 0.85),
+    2: (5,  0.70),
+    3: (11, 0.80),
+    4: (16, 0.85),
 }
 
 # Larger window = less sensitive to short streaks / one-off failures
-ROLLING_WINDOW = 15
+ROLLING_WINDOW = 5
 
 # Minimum interactions between any two tier promotions.
-# Prevents a single lucky streak from skipping tiers rapidly.
-PROMOTION_COOLDOWN = 20
+PROMOTION_COOLDOWN = 3
 
 # Adversarial probability by tier
 ADV_PROB = {1: 0.30, 2: 0.35, 3: 0.40, 4: 0.50}

@@ -160,7 +160,7 @@ def log_interaction(
         """INSERT INTO INTERACTION_LOG
            (session_id, interaction_num, tier, customer_name, customer_type, dialogue,
             documents, action_called, action_params, agent_response, agent_reasoning)
-           VALUES (%s, %s, %s, %s, %s, %s, PARSE_JSON(%s), %s, PARSE_JSON(%s), %s, %s)""",
+           SELECT %s, %s, %s, %s, %s, %s, PARSE_JSON(%s), %s, PARSE_JSON(%s), %s, %s""",
         (
             session_id,
             interaction_num,
