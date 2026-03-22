@@ -1,6 +1,7 @@
 import uuid
 import asyncio
 import time
+import random
 from typing import AsyncGenerator
 
 from dotenv import load_dotenv
@@ -43,7 +44,7 @@ app.add_middleware(
 
 class CreateSessionRequest(BaseModel):
     prompt: str
-    seed: int = 42
+    seed: int | None = None
     team_name: str | None = None
     total_rounds: int = 20
 
@@ -62,9 +63,10 @@ class RunNextRequest(BaseModel):
 @app.post("/sessions", response_model=CreateSessionResponse)
 def create_session(body: CreateSessionRequest):
     session_id = str(uuid.uuid4())
-    queries.create_session(session_id, body.prompt, body.seed, body.team_name)
+    seed = body.seed if body.seed is not None else random.randint(1, 1000000)
+    queries.create_session(session_id, body.prompt, seed, body.team_name)
     _totals[session_id] = max(1, body.total_rounds)
-    return CreateSessionResponse(session_id=session_id, seed=body.seed)
+    return CreateSessionResponse(session_id=session_id, seed=seed)
 
 
 @app.post("/sessions/{session_id}/run-next")

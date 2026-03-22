@@ -2,7 +2,7 @@
 // In production set VITE_API_URL to your deployed backend URL.
 export const API_BASE = import.meta.env.VITE_API_URL || ''
 
-export async function createSession({ prompt, seed = 42, teamName = null, totalRounds = 20 }) {
+export async function createSession({ prompt, seed, teamName = null, totalRounds = 20 }) {
   const res = await fetch(`${API_BASE}/sessions`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
