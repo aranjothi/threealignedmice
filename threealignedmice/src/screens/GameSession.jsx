@@ -4,11 +4,10 @@ import { DIMENSION_LABELS } from '../data/interactions'
 import { getCustomerPortrait } from './Characters'
 import { createSession, runNext } from '../api'
 
-const DIMS = Object.keys(DIMENSION_LABELS)
 
 const STEP_ORDER  = ['approach', 'talking', 'responding', 'result', 'exit']
 const STEP_DELAYS = { approach: 1800, result: 5000, exit: 700 }
-const TOTAL_INTERACTIONS = 20
+const TOTAL_INTERACTIONS_DEFAULT = 20  // overridden by settings.totalRounds at runtime
 
 const ACTION_CONFIG = {
   process_withdrawal:          { label: 'Process Withdrawal',      color: '#2d7a3a' },
@@ -79,64 +78,133 @@ function PromptEditor({ onDeploy, isLoading, error }) {
   )
 }
 
-// ─── Result display ───────────────────────────────────────────────────────────
-function ResultDisplay({ result, explanation, actionLabel, actionColor, intermediateActions }) {
-  const steps = [...(intermediateActions || []), actionLabel].filter(Boolean)
+// ─── Round summary overlay ────────────────────────────────────────────────────
+function RoundSummary({ interactionNum, current, currentAgent, activeData, onContinue }) {
+  const scores = current?.result || {}
+  const dims = Object.entries(scores)
+  const passed = dims.filter(([, v]) => v === 'pass').length
+  const failed = dims.filter(([, v]) => v === 'fail').length
+  const isCritical = activeData?.is_critical_failure
+
   return (
-    <div className="result-display">
-      <div className="result-title">Interaction Result</div>
-
-      {steps.length > 0 && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 10, flexWrap: 'wrap' }}>
-          {steps.map((s, i) => {
-            const isTerminal = i === steps.length - 1
-            const color = isTerminal ? actionColor : '#888'
-            const cfg = Object.values(ACTION_CONFIG).find(c => c.label === s)
-            const label = cfg ? cfg.label : s
-            return (
-              <span key={i} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                {i > 0 && <span style={{ color: '#666', fontSize: 12 }}>→</span>}
-                <span style={{
-                  fontSize: 11, fontFamily: 'var(--teko)', letterSpacing: 1,
-                  padding: '2px 8px', border: `1px solid ${color}`,
-                  color, background: color + '18', borderRadius: 3,
-                }}>{label}</span>
-              </span>
-            )
-          })}
+    <div className="pe-overlay">
+      <div className="pe-card" style={{ maxWidth: 480 }}>
+        <div className="pe-header">
+          <div className="pe-badge" style={{
+            background: isCritical ? '#4a0000' : passed >= failed ? '#1a3a1a' : '#3a1a00',
+            color: isCritical ? '#ff6b6b' : passed >= failed ? '#4caf50' : '#c8a040',
+          }}>
+            {isCritical ? 'CRITICAL FAILURE' : passed >= failed ? 'ROUND PASSED' : 'ROOM TO IMPROVE'}
+          </div>
+          <h2>Round {interactionNum} Summary</h2>
         </div>
-      )}
 
-      <div className="result-badges-row">
-        {DIMS.map((d) => {
-          const val = result?.[d]
-          const pass = val === 'pass' || val === true
-          const fail = val === 'fail' || val === false
-          return (
-            <div key={d} className={`rdim-badge ${pass ? 'rdim-pass' : fail ? 'rdim-fail' : ''}`}>
-              <span className="rdim-icon">{pass ? '✓' : fail ? '✗' : '?'}</span>
-              <span className="rdim-label">{DIMENSION_LABELS[d]}</span>
+        <div className="pe-prompt-area" style={{ gap: 10 }}>
+          {/* Score breakdown */}
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 4 }}>
+            {dims.map(([dim, val]) => {
+              const pass = val === 'pass'
+              return (
+                <div key={dim} style={{
+                  fontSize: 11, fontFamily: 'var(--teko)', letterSpacing: 1,
+                  padding: '3px 10px', borderRadius: 3,
+                  border: `1px solid ${pass ? '#2d7a3a' : '#8b2020'}`,
+                  color: pass ? '#4caf50' : '#e05050',
+                  background: pass ? '#2d7a3a18' : '#8b202018',
+                  display: 'flex', alignItems: 'center', gap: 5,
+                }}>
+                  <span>{pass ? '✓' : '✗'}</span>
+                  <span>{DIMENSION_LABELS[dim] || dim}</span>
+                </div>
+              )
+            })}
+          </div>
+
+          {/* Action taken */}
+          {currentAgent && (
+            <div style={{ fontSize: 12, color: '#aaa', marginTop: 4 }}>
+              <span style={{ color: '#666', fontFamily: 'var(--teko)', letterSpacing: 1, fontSize: 10 }}>ACTION — </span>
+              <span style={{ color: currentAgent.actionColor, fontFamily: 'var(--teko)', letterSpacing: 1 }}>
+                {currentAgent.actionLabel}
+              </span>
             </div>
-          )
-        })}
+          )}
+
+          {/* Explanation */}
+          <p style={{ fontSize: 13, color: '#ccc', lineHeight: 1.5, margin: '8px 0 0' }}>
+            {current?.explanation}
+          </p>
+        </div>
+
+        <div className="pe-footer">
+          <button className="btn btn-play pe-deploy-btn" onClick={onContinue}>
+            Continue →
+          </button>
+        </div>
       </div>
-      <p className="result-explanation">{explanation}</p>
     </div>
   )
 }
 
+// ─── Between-round prompt refinement overlay ──────────────────────────────────
+function BetweenRound({ currentPrompt, interactionNum, total, lastData, onContinue, isLoading }) {
+  const [prompt, setPrompt] = useState(currentPrompt)
+  const changed = prompt.trim() !== currentPrompt.trim()
+
+  return (
+    <div className="pe-overlay">
+      <div className="pe-card">
+        <div className="pe-header">
+          <div className="pe-badge" style={{ background: '#1a3a5c', color: '#4a9eff' }}>
+            ROUND {interactionNum} OF {total} COMPLETE
+          </div>
+          <h2>Refine Your Prompt</h2>
+          <p style={{ color: '#aaa', fontSize: 13, margin: '4px 0 0' }}>
+            Edit your instructions before the next customer arrives.
+          </p>
+        </div>
+        <div className="pe-prompt-area">
+          <div className="pe-section-label" style={{ display: 'flex', justifyContent: 'space-between' }}>
+            <span>YOUR SYSTEM PROMPT</span>
+            {changed && <span style={{ color: '#4a9eff', fontSize: 10 }}>MODIFIED</span>}
+          </div>
+          <textarea
+            className="pe-textarea"
+            value={prompt}
+            onChange={(e) => setPrompt(e.target.value)}
+            disabled={isLoading}
+          />
+          <div className="pe-char-count">{prompt.length} characters</div>
+        </div>
+        <div className="pe-footer">
+          <button
+            className="btn btn-play pe-deploy-btn"
+            disabled={isLoading || prompt.trim().length < 10}
+            onClick={() => onContinue(prompt)}
+          >
+            {isLoading ? 'Loading...' : 'Next Customer →'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+
 // ─── Main component ───────────────────────────────────────────────────────────
-export default function GameSession({ onFinish, onExit }) {
+export default function GameSession({ onFinish, onExit, settings = { totalRounds: 20, promptEditEvery: 1 } }) {
   const [gamePhase, setGamePhase] = useState('demo')   // demo | prompt_edit | live | complete
   const [step, setStep]           = useState('idle')   // idle | approach | talking | responding | result | exit
   const [paused, setPaused]       = useState(false)
   const [custText, setCustText]   = useState('')
   const [agentText, setAgentText] = useState('')
-  const [exitConfirm, setExitConfirm] = useState(false)
+  const [exitConfirm, setExitConfirm]       = useState(false)
+  const [showRoundSummary, setShowRoundSummary] = useState(false)
 
   // Demo phase — real API call, no user prompt
   const [demoData, setDemoData] = useState(null)
   const demoSessionRef = useRef(null)
+  const demoCancelRef  = useRef(null)
 
   // Prompt editor
   const [isConnecting, setIsConnecting]   = useState(false)
@@ -146,11 +214,10 @@ export default function GameSession({ onFinish, onExit }) {
   // Live session
   const [liveData, setLiveData]           = useState(null)
   const [liveNum, setLiveNum]             = useState(0)
-  const [liveCompleted, setLiveCompleted] = useState([])
   const [isLoading, setIsLoading]         = useState(false)
 
   const stateRef         = useRef({})
-  stateRef.current       = { gamePhase, step, liveNum }
+  stateRef.current       = { gamePhase, step, liveNum, promptEditEvery: settings.promptEditEvery }
   const sessionIdRef     = useRef(null)
   const currentPromptRef = useRef('')
 
@@ -160,6 +227,7 @@ export default function GameSession({ onFinish, onExit }) {
   // ── Load demo interaction on mount ────────────────────────────────────────
   useEffect(() => {
     let cancelled = false
+    demoCancelRef.current = () => { cancelled = true }
     ;(async () => {
       try {
         const { session_id } = await createSession({ prompt: '' })
@@ -213,9 +281,9 @@ export default function GameSession({ onFinish, onExit }) {
       const data = await runNext(sid, prompt)
       setLiveData(data)
       setLiveNum(data.interaction_num)
-      setLiveCompleted(prev => [...prev, normalizeScores(data.scores)])
       setCustText('')
       setAgentText('')
+      setShowRoundSummary(false)
       setStep('approach')
     } catch (e) {
       setConnectionError(String(e?.message || e))
@@ -231,12 +299,11 @@ export default function GameSession({ onFinish, onExit }) {
     currentPromptRef.current = prompt
     setActivePrompt(prompt)
     try {
-      const { session_id } = await createSession({ prompt })
+      const { session_id } = await createSession({ prompt, totalRounds: settings.totalRounds })
       sessionIdRef.current = session_id
       setGamePhase('live')
       setStep('idle')
       setLiveNum(0)
-      setLiveCompleted([])
       setLiveData(null)
       fetchNext()
     } catch {
@@ -249,8 +316,9 @@ export default function GameSession({ onFinish, onExit }) {
   // ── Auto-advance (approach → talking, result → exit) ─────────────────────
   // talking and responding require manual button presses
   useEffect(() => {
-    if (paused || gamePhase === 'prompt_edit' || gamePhase === 'complete') return
+    if (paused || gamePhase === 'prompt_edit' || gamePhase === 'between' || gamePhase === 'complete') return
     if (step === 'idle' || step === 'talking' || step === 'responding') return
+    if (step === 'result') return  // manual via View Round Summary button
 
     const delay = STEP_DELAYS[step]
     if (!delay) return
@@ -263,6 +331,8 @@ export default function GameSession({ onFinish, onExit }) {
         } else if (gp === 'live') {
           if (stateRef.current._done) {
             setGamePhase('complete')
+          } else if (stateRef.current.liveNum % stateRef.current.promptEditEvery === 0) {
+            setGamePhase('between')
           } else {
             setStep('idle')
             fetchNext()
@@ -305,18 +375,12 @@ export default function GameSession({ onFinish, onExit }) {
   // responding → result (reveal what action was taken)
   const handleSeeAction = () => setStep('result')
 
-  // ── Score strip ───────────────────────────────────────────────────────────
-  const getDimRate = (dim) => {
-    if (!liveCompleted.length) return null
-    return Math.round(liveCompleted.filter(r => r[dim] === 'pass').length / liveCompleted.length * 100)
-  }
-
   // ── Display labels ────────────────────────────────────────────────────────
   const interactionLabel = isDemoPhase
     ? 'DEMO — No Prompt'
     : step === 'idle'
       ? isLoading ? 'Agent evaluating...' : 'Waiting...'
-      : `Interaction ${liveNum} of ${TOTAL_INTERACTIONS}`
+      : `Interaction ${liveNum} of ${settings.totalRounds}`
 
   const custActive    = step === 'talking'
   const isResultPhase = step === 'result'
@@ -350,11 +414,16 @@ export default function GameSession({ onFinish, onExit }) {
           <span className="interaction-counter">{interactionLabel}</span>
           {isLivePhase && liveNum > 0 && (
             <div className="progress-track">
-              <div className="progress-fill" style={{ width: `${(liveNum / TOTAL_INTERACTIONS) * 100}%` }} />
+              <div className="progress-fill" style={{ width: `${(liveNum / settings.totalRounds) * 100}%` }} />
             </div>
           )}
         </div>
         <div className="topbar-right">
+          {isDemoPhase && (
+            <button className="pause-btn" onClick={() => { demoCancelRef.current?.(); setGamePhase('prompt_edit') }}>
+              Skip Demo
+            </button>
+          )}
           <button className="pause-btn" onClick={() => setPaused(p => !p)}>
             {paused ? '▶ Resume' : '⏸ Pause'}
           </button>
@@ -431,39 +500,57 @@ export default function GameSession({ onFinish, onExit }) {
           </>
         )}
 
-        {isResultPhase && current && (
-          <ResultDisplay
-            result={current.result}
-            explanation={current.explanation}
-            actionLabel={currentAgent?.actionLabel}
-            actionColor={currentAgent?.actionColor}
-            intermediateActions={activeData?.intermediate_actions}
-          />
+        {isResultPhase && currentAgent && (
+          <>
+            <p className="dp-text dp-text-ambient">
+              Action taken:&nbsp;
+              <span style={{ color: currentAgent.actionColor, fontFamily: 'var(--teko)', letterSpacing: 1 }}>
+                {currentAgent.actionLabel}
+              </span>
+            </p>
+            <button className="next-btn" onClick={() => setShowRoundSummary(true)} style={{ marginTop: 12 }}>
+              View Round Summary &rsaquo;
+            </button>
+          </>
         )}
       </div>
 
-      {/* ── Score strip ──────────────────────────────────────────────────── */}
-      {isLivePhase && liveCompleted.length > 0 && (
-        <div className="score-strip">
-          {DIMS.map((d) => {
-            const rate = getDimRate(d)
-            const color = rate >= 90 ? '#2d7a3a' : rate >= 75 ? '#c8a040' : '#8b2020'
-            return (
-              <div key={d} className="ss-item">
-                <span className="ss-label">{DIMENSION_LABELS[d]}</span>
-                <div className="ss-track">
-                  <div className="ss-fill" style={{ width: `${rate}%`, background: color }} />
-                </div>
-                <span className="ss-pct" style={{ color }}>{rate}%</span>
-              </div>
-            )
-          })}
-        </div>
-      )}
 
       {/* ── Prompt editor overlay ─────────────────────────────────────────── */}
       {gamePhase === 'prompt_edit' && (
         <PromptEditor onDeploy={handleDeploy} isLoading={isConnecting} error={connectionError} />
+      )}
+
+      {/* ── Round summary overlay ─────────────────────────────────────────── */}
+      {showRoundSummary && (
+        <RoundSummary
+          interactionNum={liveNum}
+          current={current}
+          currentAgent={currentAgent}
+          activeData={activeData}
+          onContinue={() => {
+            setShowRoundSummary(false)
+            setStep('exit')
+          }}
+        />
+      )}
+
+      {/* ── Between-round refinement overlay ──────────────────────────────── */}
+      {gamePhase === 'between' && (
+        <BetweenRound
+          currentPrompt={activePrompt}
+          interactionNum={liveNum}
+          total={settings.totalRounds}
+          lastData={liveData}
+          isLoading={isLoading}
+          onContinue={(newPrompt) => {
+            currentPromptRef.current = newPrompt
+            setActivePrompt(newPrompt)
+            setGamePhase('live')
+            setStep('idle')
+            fetchNext()
+          }}
+        />
       )}
 
       {/* ── Exit confirmation ─────────────────────────────────────────────── */}
@@ -486,7 +573,7 @@ export default function GameSession({ onFinish, onExit }) {
           <div className="done-card">
             <div className="done-icon">*</div>
             <h2>Evaluation Complete</h2>
-            <p>All {TOTAL_INTERACTIONS} interactions evaluated.</p>
+            <p>All {settings.totalRounds} interactions evaluated.</p>
             <button className="btn btn-play" onClick={() => onFinish({
               overallPassRate:      Math.round(activeData.scorecard.overall_pass_rate),
               dimRates:             activeData.scorecard.dimension_rates,

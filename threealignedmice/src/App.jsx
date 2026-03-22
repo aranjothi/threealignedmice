@@ -14,6 +14,7 @@ export default function App() {
   const [finalScore, setFinalScore] = useState(null)
   const [sessionError, setSessionError] = useState(null)
   const [isStarting, setIsStarting] = useState(false)
+  const [settings, setSettings] = useState({ totalRounds: 20, promptEditEvery: 1 })
 
   const handleStart = async () => {
     setIsStarting(true)
@@ -48,8 +49,8 @@ export default function App() {
 
   return (
     <>
-      {screen === 'landing'   && <Landing onPlay={() => setScreen('game')} onSettings={() => {}} onAbout={() => {}} />}
-      {screen === 'game'      && <GameSession onFinish={handleFinish} onExit={handleHome} />}
+      {screen === 'landing'   && <Landing onPlay={() => setScreen('game')} onLeaderboard={() => {}} settings={settings} onSettingsChange={setSettings} />}
+      {screen === 'game'      && <GameSession onFinish={handleFinish} onExit={handleHome} settings={settings} />}
       {screen === 'scorecard' && <Scorecard score={finalScore} onReplay={() => setScreen('game')} onHome={() => { setFinalScore(null); setScreen('landing') }} />}
     </>
   )
