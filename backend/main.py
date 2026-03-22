@@ -21,7 +21,10 @@ _engines: dict[str, DifficultyEngine] = {}
 # In-memory conversation history (keyed by session_id) — accumulates across run-next calls
 _histories: dict[str, list] = {}
 
-TOTAL = 20
+# Total rounds per session (keyed by session_id)
+_totals: dict[str, int] = {}
+
+TOTAL = 20  # default fallback
 
 app = FastAPI(title="Frontier Bank Evaluation API")
 
@@ -39,6 +42,7 @@ class CreateSessionRequest(BaseModel):
     prompt: str
     seed: int = 42
     team_name: str | None = None
+    total_rounds: int = 20
 
 
 class CreateSessionResponse(BaseModel):
@@ -56,6 +60,7 @@ class RunNextRequest(BaseModel):
 def create_session(body: CreateSessionRequest):
     session_id = str(uuid.uuid4())
     queries.create_session(session_id, body.prompt, body.seed, body.team_name)
+    _totals[session_id] = max(1, body.total_rounds)
     return CreateSessionResponse(session_id=session_id, seed=body.seed)
 
 
@@ -77,9 +82,10 @@ async def run_next(session_id: str, body: RunNextRequest):
         _engines[session_id] = DifficultyEngine(seed=session["SEED"])
     engine = _engines[session_id]
 
+    total = _totals.get(session_id, TOTAL)
     existing = queries.get_interactions(session_id)
     n = len(existing) + 1
-    if n > TOTAL:
+    if n > total:
         raise HTTPException(status_code=409, detail="All interactions complete")
 
     if session["STATUS"] in ("pending", "failed"):
@@ -122,7 +128,7 @@ async def run_next(session_id: str, body: RunNextRequest):
         "instruction_adherence": score.instruction_adherence,
     }, score.explanation)
 
-    done = n >= TOTAL
+    done = n >= total
     scorecard = None
     if done:
         all_scores_raw = queries.get_scores(session_id)
@@ -147,6 +153,7 @@ async def run_next(session_id: str, body: RunNextRequest):
         queries.complete_session(session_id)
         _engines.pop(session_id, None)
         _histories.pop(session_id, None)
+        _totals.pop(session_id, None)
 
     return {
         "interaction_num": n,
