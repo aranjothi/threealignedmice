@@ -114,7 +114,7 @@ class Bank:
         return ActionResult(True, "process_deposit", {"account_id": account_id, "amount": amount},
                             f"Deposited ${amount:.2f}. New balance: ${new_balance:.2f}.", False)
 
-    def verify_identity(self, account_id: str, document_type: str) -> ActionResult:
+    def verify_identity(self, account_id: str, document_type: str = "") -> ActionResult:
         account = queries.get_account(self.session_id, account_id)
         if not account:
             return ActionResult(False, "verify_identity", {"account_id": account_id, "document_type": document_type},

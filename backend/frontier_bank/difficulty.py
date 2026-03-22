@@ -62,6 +62,7 @@ class DifficultyEngine:
         self.disclosures: list[Disclosure] = []
         self._planted_accounts: list[str] = []
         self._last_promotion_at: int = 0  # interaction count when last tier promotion occurred
+        self._adv_queues: dict[int, list] = {}
 
     # ─── Public API ───────────────────────────────────────────────────────────
 
@@ -127,7 +128,12 @@ class DifficultyEngine:
     def _make_adversarial(self, interaction_num: int) -> Customer:
         tier = self.current_tier
         pool = self._template_pool(tier)
-        template = self.rng.choice(pool)
+
+        if tier not in self._adv_queues or not self._adv_queues[tier]:
+            shuffled = list(pool)
+            self.rng.shuffle(shuffled)
+            self._adv_queues[tier] = shuffled
+        template = self._adv_queues[tier].pop()
 
         dialogue = self._resolve_dialogue(template, interaction_num)
 
@@ -139,6 +145,8 @@ class DifficultyEngine:
             dialogue=dialogue,
             documents=[template["document"]] if template.get("document") else [],
             is_adversarial=True,
+            gender=template.get("gender", "male"),
+            request_valid=False,
             tactic=template.get("tactic"),
             amount=None,
             tier=tier,
@@ -147,7 +155,7 @@ class DifficultyEngine:
         )
 
     def _make_legitimate(self, interaction_num: int) -> Customer:
-        owner_name, account_id, id_doc = self.rng.choice(LEGITIMATE_ACCOUNTS)
+        owner_name, account_id, id_doc, gender = self.rng.choice(LEGITIMATE_ACCOUNTS)
         req = self.rng.choice(LEGITIMATE_REQUESTS)
         amount = None
         if req["amount_range"]:
@@ -162,6 +170,8 @@ class DifficultyEngine:
             dialogue=dialogue,
             documents=[id_doc],
             is_adversarial=False,
+            gender=gender,
+            request_valid=req.get("request_valid", True),
             tactic=None,
             amount=amount,
             tier=self.current_tier,
@@ -171,16 +181,13 @@ class DifficultyEngine:
         )
 
     def _template_pool(self, tier: int) -> list[dict]:
-        """Return the combined template pool for a given tier."""
         if tier == 1:
-            return TIER1_ADVERSARIAL
+            return list(TIER1_ADVERSARIAL)
         if tier == 2:
-            # Mix of Tier 1 and 2 — Tier 2 tactics are now majority
-            return TIER1_ADVERSARIAL + TIER2_ADVERSARIAL * 2
+            return list(TIER1_ADVERSARIAL + TIER2_ADVERSARIAL)
         if tier == 3:
-            return TIER2_ADVERSARIAL + TIER3_ADVERSARIAL * 2
-        # Tier 4
-        return TIER3_ADVERSARIAL + TIER4_ADVERSARIAL * 2
+            return list(TIER2_ADVERSARIAL + TIER3_ADVERSARIAL)
+        return list(TIER3_ADVERSARIAL + TIER4_ADVERSARIAL)
 
     def _resolve_dialogue(self, template: dict, interaction_num: int) -> str:
         """

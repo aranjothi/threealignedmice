@@ -28,13 +28,6 @@ const ACTION_CONFIG = {
   no_action:                   { label: 'No Action',               color: '#888' },
 }
 
-const CHAR_EMOJIS = ['🤠', '👩', '🤵', '⭐', '🎩', '👤', '👑']
-function pickEmoji(name) {
-  let h = 0
-  for (const c of (name || '')) h = (h * 31 + c.charCodeAt(0)) & 0xffff
-  return CHAR_EMOJIS[h % CHAR_EMOJIS.length]
-}
-
 function normalizeScores(scores) {
   const out = {}
   for (const [k, v] of Object.entries(scores || {})) {
@@ -157,7 +150,7 @@ function BetweenRound({ currentPrompt, interactionNum, total, lastData, onContin
     <div className="pe-overlay">
       <div className="pe-card">
         <div className="pe-header">
-          <div className="pe-badge" style={{ background: '#1a3a5c', color: '#4a9eff' }}>
+          <div className="pe-badge" style={{ background: '#1a3a5c', color: '#4a9eff', border: '1px solid #4a9eff' }}>
             ROUND {interactionNum} OF {total} COMPLETE
           </div>
           <h2>Refine Your Prompt</h2>
@@ -258,7 +251,7 @@ export default function GameSession({ onFinish, onExit, settings = { totalRounds
     return {
       customer: {
         name:     activeData.customer.name,
-        emoji:    pickEmoji(activeData.customer.name),
+        gender:   activeData.customer.gender || 'male',
         dialogue: activeData.customer.dialogue,
       },
       result:      normalizeScores(activeData.scores),
@@ -489,7 +482,7 @@ export default function GameSession({ onFinish, onExit, settings = { totalRounds
         <div className="pov-counter" />
         <div className="char-pov-anchor">
           <div className={`char-pov-inner ${step === 'approach' ? 'char-pov-approach' : step === 'exit' ? 'char-pov-leave' : ''}`}>
-            {current && getCustomerPortrait(current.customer.emoji, custActive)}
+            {current && getCustomerPortrait(current.customer.name, current.customer.gender, custActive)}
           </div>
         </div>
 

@@ -123,7 +123,6 @@ async def run_next(session_id: str, body: RunNextRequest):
         result.action, result.params, result.message, reasoning,
     )
     queries.log_score(session_id, n, {
-        "task_completion": score.task_completion,
         "auth_boundary": score.auth_boundary,
         "info_leakage": score.info_leakage,
         "appropriate_escalation": score.appropriate_escalation,
@@ -138,7 +137,8 @@ async def run_next(session_id: str, body: RunNextRequest):
         all_score_objs = [
             InteractionScore(
                 interaction_num=s["INTERACTION_NUM"],
-                task_completion=s["TASK_COMPLETION"],
+                task_completion=None,
+                social_eng_resistance=None,
                 auth_boundary=s["AUTH_BOUNDARY"],
                 info_leakage=s["INFO_LEAKAGE"],
                 appropriate_escalation=s["APPROPRIATE_ESCALATION"],
@@ -168,6 +168,7 @@ async def run_next(session_id: str, body: RunNextRequest):
             "dialogue": customer.dialogue,
             "documents": customer.documents,
             "request_type": customer.request_type,
+            "gender": customer.gender,
         },
         "action": result.action,
         "action_params": result.params,
@@ -175,7 +176,6 @@ async def run_next(session_id: str, body: RunNextRequest):
         "agent_reasoning": reasoning,
         "is_violation": result.is_violation,
         "scores": {
-            "task_completion": score.task_completion,
             "auth_boundary": score.auth_boundary,
             "info_leakage": score.info_leakage,
             "appropriate_escalation": score.appropriate_escalation,
@@ -259,7 +259,6 @@ async def start_session(session_id: str):
                 queries.log_score(
                     session_id, n,
                     {
-                        "task_completion": score.task_completion,
                         "auth_boundary": score.auth_boundary,
                         "info_leakage": score.info_leakage,
                         "appropriate_escalation": score.appropriate_escalation,
@@ -292,7 +291,6 @@ async def start_session(session_id: str):
                     "agent_reasoning": reasoning,
                     "is_violation": result.is_violation,
                     "scores": {
-                        "task_completion": score.task_completion,
                         "auth_boundary": score.auth_boundary,
                         "info_leakage": score.info_leakage,
                         "appropriate_escalation": score.appropriate_escalation,
@@ -349,11 +347,12 @@ def get_scorecard(session_id: str):
     all_scores = [
         InteractionScore(
             interaction_num=s["INTERACTION_NUM"],
-            task_completion=s["TASK_COMPLETION"],
+            task_completion=None,
+            social_eng_resistance=None,
             auth_boundary=s["AUTH_BOUNDARY"],
             info_leakage=s["INFO_LEAKAGE"],
             appropriate_escalation=s["APPROPRIATE_ESCALATION"],
-                instruction_adherence=s.get("INSTRUCTION_ADHERENCE"),
+            instruction_adherence=s.get("INSTRUCTION_ADHERENCE"),
             valid_request_approved=s.get("VALID_REQUEST_APPROVED"),
             explanation=s["EXPLANATION"],
             tier=s.get("TIER", 1),
