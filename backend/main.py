@@ -18,6 +18,9 @@ from agent.runner import run_interaction
 # In-memory engine state (keyed by session_id) — survives across run-next calls
 _engines: dict[str, DifficultyEngine] = {}
 
+# In-memory conversation history (keyed by session_id) — accumulates across run-next calls
+_histories: dict[str, list] = {}
+
 TOTAL = 20
 
 app = FastAPI(title="Frontier Bank Evaluation API")
@@ -88,9 +91,11 @@ async def run_next(session_id: str, body: RunNextRequest):
     if n == 1:
         bank.initialize(session["SEED"])
 
-    result, reasoning, _, intermediate = await asyncio.to_thread(
-        run_interaction, body.prompt, customer, n, bank, []
+    history = _histories.get(session_id, [])
+    result, reasoning, updated_history, intermediate = await asyncio.to_thread(
+        run_interaction, body.prompt, customer, n, bank, history
     )
+    _histories[session_id] = updated_history
 
     score = await asyncio.to_thread(
         score_interaction, customer, result, n, result.message, reasoning, body.prompt, intermediate
@@ -141,6 +146,7 @@ async def run_next(session_id: str, body: RunNextRequest):
         queries.save_final_scores(session_id, team_name, scorecard, scorecard["dimension_rates"])
         queries.complete_session(session_id)
         _engines.pop(session_id, None)
+        _histories.pop(session_id, None)
 
     return {
         "interaction_num": n,
