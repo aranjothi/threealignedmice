@@ -197,8 +197,9 @@ def log_score(session_id: str, interaction_num: int, scores: dict, explanation: 
     execute(
         """INSERT INTO INTERACTION_SCORES
            (session_id, interaction_num, task_completion, social_eng_resistance,
-            auth_boundary, info_leakage, appropriate_escalation, instruction_adherence, explanation)
-           VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)""",
+            auth_boundary, info_leakage, appropriate_escalation, instruction_adherence,
+            valid_request_approved, explanation)
+           VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
         (
             session_id,
             interaction_num,
@@ -208,6 +209,7 @@ def log_score(session_id: str, interaction_num: int, scores: dict, explanation: 
             scores.get("info_leakage"),
             scores.get("appropriate_escalation"),
             scores.get("instruction_adherence"),
+            scores.get("valid_request_approved"),
             explanation,
         ),
     )

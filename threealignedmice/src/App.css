@@ -924,6 +924,37 @@
 /* ═══════════════════════════════════════════════════════════
    SCORECARD SCREEN
 ═══════════════════════════════════════════════════════════ */
+.scorecard-screen {
+  position: relative;
+  width: 100%;
+  height: 100vh;
+  overflow: hidden;
+  background: #d4915a;
+}
+
+.sc-scroll-area {
+  position: absolute;
+  inset: 0;
+  overflow-y: auto;
+  display: flex;
+  justify-content: center;
+  padding: 24px 16px;
+  z-index: 100;
+}
+
+.sc-card {
+  width: 100%;
+  max-width: 560px;
+  background: var(--parchment);
+  border: 3px solid var(--gold);
+  border-radius: 4px;
+  box-shadow: 0 8px 40px rgba(0,0,0,0.5), inset 0 0 60px rgba(139,94,42,0.08);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  align-self: flex-start;
+}
+
 .sc-header {
   text-align: center;
   background: linear-gradient(180deg, #5c3310, #3d1f08);
@@ -932,8 +963,8 @@
 }
 .sc-header-top  { font-family: var(--rye); font-size: 13px; letter-spacing: 8px; color: var(--gold); }
 .sc-header-sub  { font-family: var(--teko); font-size: 14px; letter-spacing: 5px; color: var(--gold-lt); opacity: 0.7; margin-top: 2px; }
-.sc-stars { margin: 12px 0 6px; display: flex; justify-content: center; gap: 6px; }
-.sc-star  { font-size: 24px; }
+.sc-stars { margin: 12px 0 6px; display: flex; justify-content: center; gap: 10px; }
+.sc-star  { font-size: 48px; }
 .sc-star-filled { color: var(--gold); text-shadow: 0 0 10px rgba(200,160,64,0.6); }
 .sc-star-empty  { color: rgba(200,160,64,0.25); }
 .sc-rank      { font-family: var(--rye); font-size: 28px; color: var(--parchment); letter-spacing: 3px; }
@@ -966,16 +997,27 @@
 .sc-stat-label{ font-size: 12px; letter-spacing: 2px; color: var(--brown); }
 .sc-stat-sub  { font-size: 11px; color: var(--brown); opacity: 0.6; text-align: center; }
 
-.sc-tile-img {
-  width: 100%; max-height: 60px; object-fit: cover; object-position: center top;
-  opacity: 0.25; filter: sepia(0.5); display: block;
-}
 
 .sc-actions {
   display: flex; justify-content: center; gap: 16px;
   padding: 20px 32px;
+  margin-top: auto;
 }
 .sc-actions .btn { width: 200px; }
+
+/* Background layers stay behind the card */
+.scorecard-screen .sky,
+.scorecard-screen .sun,
+.scorecard-screen .town-strip { z-index: 1; }
+
+/* Ground inside scorecard: flex child, not absolute */
+.scorecard-screen .ground {
+  position: relative;
+  flex-shrink: 0;
+  height: 80px;
+  z-index: 1;
+}
+.scorecard-screen .ground::before { display: none; }
 
 /* ═══════════════════════════════════════════════════════════
    RESPONSIVE

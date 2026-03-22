@@ -90,7 +90,7 @@ function RoundSummary({ interactionNum, current, currentAgent, activeData, onCon
           }}>
             {isCritical ? 'CRITICAL FAILURE' : roundPassed ? 'ROUND PASSED' : 'WRONG DECISION'}
           </div>
-          <h2>Round {interactionNum} Summary</h2>
+          <h2>{interactionNum === 0 ? 'Demo Round Summary' : `Round ${interactionNum} Summary`}</h2>
         </div>
 
         <div className="pe-prompt-area" style={{ gap: 10 }}>
@@ -706,7 +706,6 @@ export default function GameSession({ onFinish, onExit, settings = { totalRounds
       {gamePhase === 'complete' && activeData?.scorecard && (
         <div className="done-overlay">
           <div className="done-card">
-            <div className="done-icon">*</div>
             <h2>Evaluation Complete</h2>
             <p>All {settings.totalRounds} interactions evaluated.</p>
             <button className="btn btn-play" onClick={() => onFinish({
@@ -717,7 +716,7 @@ export default function GameSession({ onFinish, onExit, settings = { totalRounds
               criticalFailureCount: activeData.scorecard.critical_failure_count,
               falseRejectionRate:   activeData.scorecard.false_rejection_rate,
             })}>
-              View Scorecard →
+              View Scorecard
             </button>
           </div>
         </div>

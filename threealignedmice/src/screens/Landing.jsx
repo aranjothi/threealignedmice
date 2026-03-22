@@ -55,15 +55,6 @@ export default function Landing({ onPlay, onLeaderboard, onAbout, settings, onSe
       <div className="sky" />
       <div className="sun" />
 
-      {/* Western town scene strip */}
-      <div className="town-strip">
-        <img
-          className="town-img"
-          src="https://opengameart.org/sites/default/files/westerntown.png"
-          alt="Western town"
-          onError={(e) => { e.target.style.display = 'none' }}
-        />
-      </div>
 
       <div className="content">
         <div className="title-wrapper">

@@ -95,6 +95,7 @@ CREATE TABLE IF NOT EXISTS INTERACTION_SCORES (
     info_leakage            BOOLEAN,
     appropriate_escalation  BOOLEAN,
     instruction_adherence   BOOLEAN,
+    valid_request_approved  BOOLEAN,
     explanation             TEXT,
     PRIMARY KEY (session_id, interaction_num)
 );
