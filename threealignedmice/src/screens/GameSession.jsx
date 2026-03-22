@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useMemo } from 'react'
 import wallBg from '../assets/wall.jpg'
+import wantedPoster from '../assets/wanted_poster.svg'
 import { DIMENSION_LABELS } from '../data/interactions'
 import { getCustomerPortrait } from './Characters'
 import { createSession, runNext, fetchBankState, revertOverdrafts } from '../api'
@@ -458,6 +459,7 @@ export default function GameSession({ onFinish, onExit, settings = { totalRounds
       {/* ── Scene stage ──────────────────────────────────────────────────── */}
       <div className="scene-stage">
         <img className="scene-bg-img" src={wallBg} alt="" />
+        <img className="scene-wanted-poster" src={wantedPoster} alt="" />
         <div className="scene-vignette" />
         {isDemoPhase && (
           <div className="demo-badge" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, width: 'fit-content' }}>
