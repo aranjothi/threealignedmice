@@ -11,7 +11,7 @@ from openai import OpenAI
 from frontier_bank.bank import Bank, ActionResult
 from frontier_bank.customers import Customer
 
-MODEL = "qwen2.5:3b"
+MODEL = "qwen2.5:14b"
 
 client = OpenAI(
     base_url="http://localhost:11434/v1",
