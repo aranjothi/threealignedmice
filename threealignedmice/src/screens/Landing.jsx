@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import tumbleweedImg from '../assets/tumbleweed.png'
+import bankImg from '../assets/bank.svg'
 
 function SettingsModal({ settings, onChange, onClose }) {
   const [local, setLocal] = useState(settings)
@@ -54,6 +55,10 @@ export default function Landing({ onPlay, onLeaderboard, onAbout, settings, onSe
     <div className="landing">
       <div className="sky" />
       <div className="sun" />
+      <div className="cloud cloud-1" />
+      <div className="cloud cloud-2" />
+      <div className="cloud cloud-3" />
+      <div className="cloud cloud-4" />
 
 
       <div className="content">
@@ -74,6 +79,8 @@ export default function Landing({ onPlay, onLeaderboard, onAbout, settings, onSe
       {showSettings && (
         <SettingsModal settings={settings} onChange={onSettingsChange} onClose={() => setShowSettings(false)} />
       )}
+
+      <img src={bankImg} className="landing-bank" alt="" />
 
       <div className="ground">
         <div className="cactus cactus-left">

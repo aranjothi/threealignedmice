@@ -54,6 +54,42 @@
   z-index: 1;
 }
 
+/* ── Clouds ──────────────────────────────────────────────── */
+.cloud {
+  position: absolute;
+  z-index: 1;
+  background: rgba(255, 240, 210, 0.55);
+  border-radius: 50px;
+  filter: blur(6px);
+  animation: drift linear infinite;
+}
+.cloud::before, .cloud::after {
+  content: '';
+  position: absolute;
+  background: inherit;
+  border-radius: 50%;
+}
+.cloud-1 { width: 140px; height: 40px; top: 8%;  animation-duration: 40s; animation-delay: 0s;    left: -160px; }
+.cloud-1::before { width: 70px;  height: 55px; top: -28px; left: 20px; }
+.cloud-1::after  { width: 50px;  height: 40px; top: -18px; left: 70px; }
+
+.cloud-2 { width: 100px; height: 30px; top: 18%; animation-duration: 55s; animation-delay: -18s;  left: -120px; }
+.cloud-2::before { width: 55px;  height: 45px; top: -22px; left: 15px; }
+.cloud-2::after  { width: 40px;  height: 30px; top: -12px; left: 55px; }
+
+.cloud-3 { width: 160px; height: 45px; top: 5%;  animation-duration: 70s; animation-delay: -35s;  left: -180px; }
+.cloud-3::before { width: 80px;  height: 60px; top: -30px; left: 25px; }
+.cloud-3::after  { width: 60px;  height: 45px; top: -20px; left: 85px; }
+
+.cloud-4 { width: 90px;  height: 28px; top: 22%; animation-duration: 48s; animation-delay: -10s;  left: -110px; }
+.cloud-4::before { width: 48px;  height: 38px; top: -20px; left: 12px; }
+.cloud-4::after  { width: 36px;  height: 28px; top: -10px; left: 48px; }
+
+@keyframes drift {
+  from { transform: translateX(0); }
+  to   { transform: translateX(calc(100vw + 220px)); }
+}
+
 .town-strip {
   position: absolute;
   bottom: 118px;
@@ -163,6 +199,16 @@
 .btn-settings { background: linear-gradient(180deg, #c08050 0%, #906030 40%, #804820 60%, #906030 100%); }
 .btn-learn    { background: linear-gradient(180deg, #b87040 0%, #804828 40%, #6c3818 60%, #804828 100%); }
 .btn-icon { font-size: 15px; opacity: 0.9; }
+
+.landing-bank {
+  position: absolute;
+  bottom: 118px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 320px;
+  z-index: 2;
+  pointer-events: none;
+}
 
 /* Ground & cacti */
 .ground {
